@@ -1,0 +1,18 @@
+postgres:
+  adapter: postgresql
+  database: migration_comments_test
+  host: 127.0.0.1
+  username: postgres
+  password: postgres
+
+mysql:
+  adapter: mysql2
+  database: migration_comments_test
+  username: root
+  password:
+
+sqlite:
+  adapter: sqlite3
+  database: test/db/migration_comments_test
+  pool: 5
+  timeout: 5000
