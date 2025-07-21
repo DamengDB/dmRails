@@ -1,4 +1,0 @@
-source "http://rubygems.org"
-gem "activerecord", '~> 4.0'
-
-gemspec :path => '../'
