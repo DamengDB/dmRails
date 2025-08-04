@@ -17,7 +17,6 @@ module ActiveRecord
         def execute(sql, name = nil)
           result = log(sql, name) do
             ActiveSupport::Dependencies.interlock.permit_concurrent_loads do
-              puts sql
               @connection.query(sql)
             end
           end
