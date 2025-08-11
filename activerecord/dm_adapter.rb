@@ -157,10 +157,14 @@ module ActiveRecord
       end
 
       def table_comment(table_name) # :nodoc:
-        (_owner, table_name) = @connection.describe(table_name)
-        select_value(<<~SQL.squish, "SCHEMA", [bind_string("table_name", table_name)])
-            SELECT comments FROM all_tab_comments  WHERE table_name = :table_name
-          SQL
+        scope = quoted_scope(table_name)
+
+        query_value(<<~SQL, "SCHEMA").presence
+          SELECT COMMENTS 
+          FROM DBA_TAB_COMMENTS
+          WHERE OWNER = #{scope[:schema]}
+          AND TABLE_NAME = #{scope[:name]}
+        SQL
       end
 
       def change_table_comment(table_name, comment_or_changes)
