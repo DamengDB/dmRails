@@ -1,6 +1,6 @@
 require 'apartment/adapters/abstract_adapter'
 
-gem "dm"
+gem "dmRuby"
 require "dm"
 
 module Apartment

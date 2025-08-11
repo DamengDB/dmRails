@@ -34,6 +34,22 @@ module ActiveRecord
           end
         end
 
+        def insert(arel, name = nil, pk = nil, id_value = nil, sequence_name = nil, binds = [])
+          pk_name = pk
+          ast = arel.instance_variable_get("@ast")
+          relation = ast.instance_variable_get("@relation")
+          table_name = relation.instance_variable_get("@name")
+          sql, binds = to_sql_and_binds(arel, binds)
+          value = exec_insert(sql, name, binds, pk, sequence_name)
+          id_value || last_inserted_id(value, table_name, pk_name)
+        end
+        alias create insert
+
+        def exec_insert(sql, name = nil, binds = [], pk = nil, sequence_name = nil)
+          sql, binds = sql_for_insert(sql, pk, binds)
+          exec_query(sql, name, binds)
+        end
+
         def exec_delete(sql, name = nil, binds = [])
           if without_prepared_statement?(binds)
             execute_and_free(sql, name) { @connection.affected_rows }
@@ -45,7 +61,7 @@ module ActiveRecord
 
         private
 
-        def last_inserted_id(result)
+        def last_inserted_id(result, table_name, pk_name)
           last_idresult = @connection.last_id
           rowid_dict = {'A'=> 0, 'B'=> 1, 'C'=> 2, 'D'=> 3, 'E'=> 4, 'F'=> 5, 'G'=> 6, 'H'=> 7, 'I'=> 8, 'J'=> 9,
               'K'=> 10, 'L'=> 11,
@@ -60,9 +76,13 @@ module ActiveRecord
               '4'=> 56, '5'=> 57, '6'=> 58, '7'=> 59, '8'=> 60, '9'=> 61, '+'=> 62, '/'=> 63}
           result = 0
           if last_idresult.class == String
+            rowid = 0
             last_idresult.each_char do |char|
-              result = result * 64 + rowid_dict[char]
+              rowid = rowid * 64 + rowid_dict[char]
             end
+            result = @connection.query("SELECT \"#{pk_name}\" FROM \"#{table_name}\" WHERE ROWID = #{rowid};")
+            inserted_id = result.each(as: :array)[0][0]
+            return inserted_id
           else
             result = last_idresult
           end

@@ -12,7 +12,7 @@ require "active_record/connection_adapters/dm/type_metadata"
 require "active_record/connection_adapters/dm/utils"
 require "active_support/core_ext/string/strip"
 
-gem "dm"
+gem "dmRuby"
 require "dm"
 
 module ActiveRecord
