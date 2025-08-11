@@ -55,8 +55,9 @@ module ActiveRecord
         timestamp:   { name: "timestamp" },
         time:        { name: "time" },
         date:        { name: "date" },
-        binary:      { name: "blob", limit: 65535 },
-        boolean:     { name: "tinyint", limit: 1 },
+        blob:        { name: "blob" },
+        binary:      { name: "binary"},
+        boolean:     { name: "tinyint"},
         json:        { name: "json" },
         jsonb:       { name: "jsonb" },
       }
@@ -474,10 +475,6 @@ module ActiveRecord
           m.register_type "tinyblob",      Type::Binary.new(limit: 2**8 - 1)
           m.register_type "text",          Type::Text.new(limit: 2**16 - 1)
           m.register_type "blob",          Type::Binary.new(limit: 2**16 - 1)
-          m.register_type "mediumtext",    Type::Text.new(limit: 2**24 - 1)
-          m.register_type "mediumblob",    Type::Binary.new(limit: 2**24 - 1)
-          m.register_type "longtext",      Type::Text.new(limit: 2**32 - 1)
-          m.register_type "longblob",      Type::Binary.new(limit: 2**32 - 1)
           m.register_type "float",         Type::Float.new(limit: 24)
           m.register_type "double",        Type::Float.new(limit: 53)
           m.register_type "json",          DmJson.new
