@@ -20,7 +20,7 @@ module ActiveRecord
 
       def create
         system_password = ENV.fetch("PASSWORD") {
-          print "Please provide the SYSTEM password for your Dm installation (set ORACLE_SYSTEM_PASSWORD to avoid this prompt)\n>"
+          print "Please provide the SYSTEM password for your Dm installation\n>"
           $stdin.gets.strip
         }
         establish_connection(@config.merge(username: "SYSDBA", password: system_password))
@@ -58,7 +58,7 @@ module ActiveRecord
           end
         end
         args << configuration["database"]
-        run_cmd("pg_dump", args, "dumping")
+        run_cmd("dm_dump", args, "dumping")
         remove_sql_header_comments(filename)
         File.open(filename, "a") { |f| f << "SET search_path TO #{connection.schema_search_path};\n\n" }
       end

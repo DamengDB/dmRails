@@ -382,7 +382,7 @@ module ActiveRecord
           # remove any ASC/DESC modifiers
           s.gsub(/\s+(ASC|DESC)\s*?/i, "")
         }.reject(&:blank?).map.with_index { |column, i|
-          "FIRST_VALUE(#{column}) OVER (PARTITION BY #{columns} ORDER BY #{column}) AS \"alias_#{i}__\""
+          "FIRST_VALUE(#{column}) OVER (PARTITION BY #{columns} ORDER BY #{column}) AS alias_#{i}__"
         }
         (order_columns << super).join(", ")
       end
@@ -393,6 +393,10 @@ module ActiveRecord
 
       def quote_string(string)
         string.gsub(/'/, "''")
+      end
+
+      def supports_index_sort_order?
+        true
       end
 
       def new_column_from_field(table_name, field)
@@ -453,6 +457,10 @@ module ActiveRecord
         else
           to_enum(:each_hash, result)
         end
+      end
+
+      def supports_partial_index?
+        true
       end
 
       def change_column_for_alter(table_name, column_name, type, **options)

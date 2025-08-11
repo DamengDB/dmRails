@@ -94,6 +94,18 @@ module ActiveRecord
             sql
           end
 
+          def add_index_length(quoted_columns, **options)
+            lengths = options_for_index_columns(options[:length])
+            quoted_columns.each do |name, column|
+              column << "(#{lengths[name]})" if lengths[name].present?
+            end
+          end
+
+          def add_options_for_index_columns(quoted_columns, **options)
+            quoted_columns = add_index_length(quoted_columns, **options)
+            super
+          end
+
           def quoted_scope(name = nil, type: nil)
             schema, name = extract_schema_qualified_name(name)
             scope = {}
