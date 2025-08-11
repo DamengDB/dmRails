@@ -35,13 +35,9 @@ module ActiveRecord
         end
 
         def insert(arel, name = nil, pk = nil, id_value = nil, sequence_name = nil, binds = [])
-          pk_name = pk
-          ast = arel.instance_variable_get("@ast")
-          relation = ast.instance_variable_get("@relation")
-          table_name = relation.instance_variable_get("@name")
           sql, binds = to_sql_and_binds(arel, binds)
           value = exec_insert(sql, name, binds, pk, sequence_name)
-          id_value || last_inserted_id(value, table_name, pk_name)
+          id_value || last_inserted_id(value)
         end
         alias create insert
 
@@ -61,16 +57,9 @@ module ActiveRecord
 
         private
 
-        def last_inserted_id(result, table_name, pk_name)
-          last_idresult = @connection.last_id
-          if last_idresult.class == String
-            result = @connection.query("SELECT \"#{pk_name}\" FROM \"#{table_name}\" WHERE ROWID = '#{last_idresult}';")
-            inserted_id = result.each(as: :array)[0][0]
-            return inserted_id
-          else
-            return last_idresult
-          end
-
+        def last_inserted_id(result)
+          result = @connection.query("SELECT SCOPE_IDENTITY;")
+          inserted_id = result.each(as: :array)[0][0]
         end
 
         def exec_stmt_and_free(sql, name, binds, cache_stmt: false)
