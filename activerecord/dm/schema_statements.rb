@@ -15,10 +15,10 @@ module ActiveRecord
             schema = "\'#{scheam}\'"
           end
           result = query(<<-SQL, "SCHEMA")
-            SELECT i.table_name AS table_name, i.index_name AS index_name, i.uniqueness,
-              i.index_type, i.ityp_owner, i.ityp_name, i.parameters,
-              i.tablespace_name AS tablespace_name,
-              c.column_name AS column_name, atc.virtual_column
+            SELECT i.table_name AS "table_name", i.index_name AS "index_name", i.uniqueness AS "uniqueness",
+              i.index_type AS "index_type", i.ityp_owner AS "ityp_owner", i.ityp_name AS "ityp_name", i.parameters AS "parameters",
+              i.tablespace_name AS "tablespace_name",
+              c.column_name AS "column_name", atc.virtual_column AS "virtual_column"
             FROM all_indexes i
               JOIN all_ind_columns c ON c.index_name = i.index_name AND c.index_owner = i.owner
               LEFT OUTER JOIN all_tab_cols atc ON i.table_name = atc.table_name AND
@@ -48,7 +48,26 @@ module ActiveRecord
               IndexDefinition.new(table_name, index_name, unique == 'UNIQUE', [], {}, nil, nil, index_type, using_type, nil)
             end.compact
           else
+            id = 0
+            pk_arr = []
+            reflect_dict = {}
             result.map do |row|
+              if reflect_dict.include?(row['index_name'])
+                sort_id = reflect_dict[row['index_name']]
+                pk_temp = pk_arr[sort_id]
+                if pk_temp['column_name'].is_a?(String)
+                  new_array = [pk_temp['column_name'], row['column_name']]
+                  pk_arr[sort_id]['column_name'] = new_array
+                else
+                  pk_arr[sort_id]['column_name'].push(row['column_name'])
+                end
+              else
+                pk_arr.push(row)
+                reflect_dict.store(row['index_name'], id)
+                id += 1
+              end
+            end
+            pk_arr.map do |row|
               table_name = row["table_name"]
               index_name = row["index_name"]
               unique = row["uniqueness"]
