@@ -86,10 +86,17 @@ module ActiveRecord
         private
           def data_source_sql(name = nil, type: nil)
             scope = quoted_scope(name, type: type)
-            sql = "SELECT tab.table_name FROM all_tables tab, sysobjects obj"
-            sql << " WHERE obj.name = tab.table_name"
+            if type == "VIEW"
+              all_name = "all_views"
+              col_name = "view_name"
+            else
+              all_name = "all_tables"
+              col_name = "table_name"
+            end
+            sql = "{data_source_sql}SELECT tab.#{col_name} FROM #{all_name} tab, sysobjects obj"
+            sql << " WHERE obj.name = tab.#{col_name}"
             sql << " AND tab.owner = #{scope[:schema]}"
-            sql << " AND tab.table_name = #{scope[:name]}" if scope[:name]
+            sql << " AND tab.#{col_name} = #{scope[:name]}" if scope[:name]
             sql << " AND obj.subtype$ = #{scope[:type]}" if scope[:type]
             sql
           end
