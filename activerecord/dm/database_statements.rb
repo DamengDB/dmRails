@@ -3,7 +3,7 @@ module ActiveRecord
     module Dm
       module DatabaseStatements
         def query(sql, name = nil) # :nodoc:
-          if sql == data_source_sql(type: "BASE TABLE")
+          if sql == data_source_sql(type: "BASE TABLE") || sql == data_source_sql()
             execute(sql, name).each(as: :array)
           else
             execute(sql, name).to_a

@@ -48,7 +48,7 @@ module ActiveRecord
         primary_key: "bigint PRIMARY KEY auto_increment",
         string:      { name: "varchar", limit: 255 },
         text:        { name: "text", limit: 65535 },
-        integer:     { name: "int" },
+        integer:     { name: "integer" },
         float:       { name: "float" },
         decimal:     { name: "decimal" },
         datetime:    { name: "datetime" },
@@ -510,7 +510,8 @@ module ActiveRecord
           m.register_type "float",         Type::Float.new(limit: 24)
           m.register_type "double",        Type::Float.new(limit: 53)
           m.register_type "bigint",        Type::Integer.new
-
+          m.register_type "integer",       Type::Integer.new
+          m.register_type "int",           Type::Integer.new
           m.register_type "json",          DmJson.new
           m.register_type "jsonb",         DmJsonb.new
         end
