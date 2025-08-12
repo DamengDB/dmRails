@@ -60,6 +60,8 @@ module ActiveRecord
         boolean:     { name: "tinyint"},
         json:        { name: "json" },
         jsonb:       { name: "jsonb" },
+        varchar:     { name: "varchar" },
+        bigint:      { name: "bigint" },
       }
 
       def initialize(connection, logger, connection_options, config)
@@ -294,12 +296,12 @@ module ActiveRecord
                 ELSE LOWER(cols.data_type) 
                 END
                 ELSE LOWER(cols.data_type) END AS "sql_type",
-                 LOWER(cols.data_default), LOWER(cols.nullable),
-                 cols.data_type_owner AS \"sql_type_owner\",
-                 syscol.LENGTH$ AS \"limit\", syscol.scale AS \"scale\",
-                 comments.comments AS \"column_comment\"
+                 LOWER(cols.data_default) as "data_default", LOWER(cols.nullable) as "nullable",
+                 cols.data_type_owner AS "sql_type_owner",
+                 syscol.LENGTH$ AS "limit", syscol.scale AS "scale",
+                 comments.comments AS "column_comment"
             FROM all_tab_cols cols, all_col_comments comments, syscolumns syscol, sysobjects sysobj
-            WHERE cols.table_name = \'#{desc_table_name}\'
+            WHERE cols.table_name = '#{desc_table_name}'
              AND cols.owner      = #{owner}
              AND cols.hidden_column = 'NO'
              AND cols.owner = comments.owner
@@ -405,6 +407,7 @@ module ActiveRecord
 
       def new_column_from_field(table_name, field)
         limit, scale = field["limit"], field["scale"]
+        type_metadata = fetch_type_metadata(field["sql_type"])
         if limit || scale
           if scale == 0
             if field["sql_type"] == 'varchar' || field["sql_type"] == 'varchar2' || field["sql_type"] == 'char'
@@ -432,8 +435,8 @@ module ActiveRecord
           field["data_default"] = false if field["data_default"] == "N"
         end
 
-        type_metadata = fetch_type_metadata(field["sql_type"])
         default_value = extract_value_from_default(field["data_default"])
+        type_metadata.instance_variable_set("@sql_type", field["sql_type"])
         default_value = nil if is_virtual
         version = Rails.version
         if version < "6.0"
@@ -483,12 +486,15 @@ module ActiveRecord
       private
         def initialize_type_map(m)
           super
+          register_class_with_limit m, "varchar", Type::String
+          m.alias_type "char",             "varchar"
           m.register_type "tinytext",      Type::Text.new(limit: 2**8 - 1)
           m.register_type "tinyblob",      Type::Binary.new(limit: 2**8 - 1)
           m.register_type "text",          Type::Text.new(limit: 2**16 - 1)
           m.register_type "blob",          Type::Binary.new(limit: 2**16 - 1)
           m.register_type "float",         Type::Float.new(limit: 24)
           m.register_type "double",        Type::Float.new(limit: 53)
+          m.register_type "bigint",        Type::Integer.new
           m.register_type "json",          DmJson.new
           m.register_type "jsonb",         DmJsonb.new
         end
