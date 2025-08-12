@@ -58,7 +58,7 @@ module ActiveRecord
         private
 
         def last_inserted_id(result)
-          result = @connection.query("SELECT LAST_INSERT_ID;")
+          result = @connection.query("SELECT LAST_INSERT_ID | SCOPE_IDENTITY;")
           inserted_id = result.each(as: :array)[0][0]
         end
 

@@ -297,7 +297,7 @@ module ActiveRecord
                 END
                 ELSE LOWER(cols.data_type) END AS "sql_type",
                  LOWER(cols.data_default) as "data_default", LOWER(cols.nullable) as "nullable",
-                 cols.data_type_owner AS "sql_type_owner",
+                 cols.data_type_owner AS "sql_type_owner", cols.DATA_PRECISION AS "precision",
                  syscol.LENGTH$ AS "limit", syscol.scale AS "scale",
                  comments.comments AS "column_comment"
             FROM all_tab_cols cols, all_col_comments comments, syscolumns syscol, sysobjects sysobj
@@ -409,12 +409,15 @@ module ActiveRecord
         limit, scale = field["limit"], field["scale"]
         type_metadata = fetch_type_metadata(field["sql_type"])
         if limit || scale
-          if scale == 0
-            if field["sql_type"] == 'varchar' || field["sql_type"] == 'varchar2' || field["sql_type"] == 'char'
-              field["sql_type"] += "(#{(limit || 256).to_i})"
-            end
+          if field["sql_type"] == 'decimal' || field["sql_type"] == 'number' || field["sql_type"] == 'numeric' || field["sql_type"] == 'dec'
+            field["sql_type"] += "(#{(limit || 38).to_i}, #{(scale || 0).to_i})"
+
+          elsif scale == 0
+              if field["sql_type"] == 'varchar' || field["sql_type"] == 'varchar2' || field["sql_type"] == 'char'
+                field["sql_type"] += "(#{(limit || 256).to_i})"
+              end
           else
-            if field["sql_type"] == 'datetime' || field["sql_type"] == 'decimal' || field["sql_type"] == 'time' || field["sql_type"] == 'timestamp' || field["sql_type"] == 'datetime with time zone' || field["sql_type"] == 'timestamp'
+            if field["sql_type"] == 'datetime'|| field["sql_type"] == 'time' || field["sql_type"] == 'timestamp' || field["sql_type"] == 'datetime with time zone' || field["sql_type"] == 'timestamp'
               field["sql_type"] += "(#{(scale || 6).to_i})"
             end
           end
@@ -431,12 +434,18 @@ module ActiveRecord
 
           field["data_default"].sub!(/^'(.*)'$/m, '\1')
           field["data_default"] = nil if /^(null|empty_[bc]lob\(\))$/i.match?(field["data_default"])
-          # TODO: Needs better fix to fallback "N" to false
           field["data_default"] = false if field["data_default"] == "N"
         end
 
         default_value = extract_value_from_default(field["data_default"])
         type_metadata.instance_variable_set("@sql_type", field["sql_type"])
+        type_metadata.instance_variable_set("@precision", field["precision"])
+        type_metadata.instance_variable_set("@limit", field["limit"])
+        if field["scale"] == 0
+          type_metadata.instance_variable_set("@scale", nil)
+        else
+          type_metadata.instance_variable_set("@scale", field["scale"])
+        end
         default_value = nil if is_virtual
         version = Rails.version
         if version < "6.0"
@@ -466,6 +475,11 @@ module ActiveRecord
         end
       end
 
+      def active?
+        @connection.ping
+      end
+
+
       def supports_partial_index?
         true
       end
@@ -487,7 +501,8 @@ module ActiveRecord
         def initialize_type_map(m)
           super
           register_class_with_limit m, "varchar", Type::String
-          m.alias_type "char",             "varchar"
+          m.alias_type "char", "varchar"
+          register_class_with_limit m, "decimal", Type::Decimal
           m.register_type "tinytext",      Type::Text.new(limit: 2**8 - 1)
           m.register_type "tinyblob",      Type::Binary.new(limit: 2**8 - 1)
           m.register_type "text",          Type::Text.new(limit: 2**16 - 1)
@@ -495,6 +510,7 @@ module ActiveRecord
           m.register_type "float",         Type::Float.new(limit: 24)
           m.register_type "double",        Type::Float.new(limit: 53)
           m.register_type "bigint",        Type::Integer.new
+
           m.register_type "json",          DmJson.new
           m.register_type "jsonb",         DmJsonb.new
         end
