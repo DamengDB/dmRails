@@ -209,6 +209,34 @@ module ActiveRecord
         execute "DROP INDEX #{quote_column_name(index_name)}"
       end
 
+      ER_VIOLATE_UNIQUE_CONSTRAINT        = -6602
+
+      def analyse_exception(exception)
+        if exception.nil?
+          return exception
+        end
+
+        message = exception.message
+        if message.start_with?('[CODE:')
+          code = message.match(/\[CODE:(-?\d+)\]/)[1].to_i
+          return code
+        else
+          return exception
+        end
+      end
+
+      def translate_exception(exception, message:, sql:, binds:)
+        code = analyse_exception(exception)
+        if code.is_a?(Integer)
+          case code
+          when ER_VIOLATE_UNIQUE_CONSTRAINT
+            RecordNotUnique.new(message, sql: sql, binds: binds)
+          else
+            super
+          end
+        end
+      end
+
       def change_column_default(table_name, column_name, default_or_changes) # :nodoc:
         default = extract_new_default_value(default_or_changes)
         execute "ALTER TABLE #{quote_table_name(table_name)} ALTER COLUMN #{quote_column_name(column_name)} SET DEFAULT #{quote(default)}"
@@ -486,7 +514,6 @@ module ActiveRecord
       def active?
         @connection.ping
       end
-
 
       def supports_partial_index?
         true
