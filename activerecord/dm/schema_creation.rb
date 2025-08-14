@@ -7,10 +7,11 @@ module ActiveRecord
 
         private
           def add_column_options!(sql, options)
-            sql << " DEFAULT #{quote_default_expression(options[:default], options[:column])}" if options_include_default?(options)
-            # must explicitly check for :null to allow change_column to work on migrations
+            sql << " DEFAULT #{quote_default_expression(options[:default], options[:column])}" if !options[:default].nil?
             if options[:null] == false
               sql << " NOT NULL"
+            elsif options[:null] == true
+              sql << " NULL"
             end
             if options[:primary_key] == true
               sql << " PRIMARY KEY"
@@ -28,7 +29,6 @@ module ActiveRecord
             elsif column_options(o.column)[:after]
               change_column_sql << " AFTER #{quote_column_name(column_options(o.column)[:after])}"
             end
-            puts change_column_sql
             change_column_sql
           end
 
