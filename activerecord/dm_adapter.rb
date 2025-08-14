@@ -83,6 +83,10 @@ module ActiveRecord
         end
       end
 
+      def arel_visitor
+        Arel::Visitors::Dm.new(self)
+      end
+
       def connect
         @connection = Dm::Client.new(@config)
       end
@@ -144,7 +148,7 @@ module ActiveRecord
       end
 
       def empty_insert_statement_value(primary_key = nil) # :nodoc:
-        "VALUES ()"
+        "DEFAULT VALUES"
       end
 
       def recreate_database(name, options = {})

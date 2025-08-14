@@ -31,7 +31,11 @@
 	在此部分代码下添加一行 register_task(/dm/,           "ActiveRecord::Tasks::DmDatabaseTasks")
 	格式保持一致即可
 
-  4、将apartment目录下的 dm_adapter.rb文件 复制至 apartment-*.*.*/lib/apartment/adapters目录 下
+  4、将activerecord/arel目录下的dm.rb文件复制至 activerecord-*.*.*.*/lib/arel/visitors目录下
 
-  5、如果使用了ruby的migration_comments库，测试中使用版本为0.4.1版本，请将migration_comments目录下的 dm_adapter.rb文件 复制至migration_comments-0.4.1/lib/migration_comments/active_record/connection_adapters目录下，
+  5、修改 activerecord-*.*.*.*/lib/arel目录下的visitors.rb文件： 添加 require "arel/visitors/dm" 至文件中
+
+  6、将apartment目录下的 dm_adapter.rb文件 复制至 apartment-*.*.*/lib/apartment/adapters目录 下
+
+  7、如果使用了ruby的migration_comments库，测试中使用版本为0.4.1版本，请将migration_comments目录下的 dm_adapter.rb文件 复制至migration_comments-0.4.1/lib/migration_comments/active_record/connection_adapters目录下，
         同时修改migration_comments-0.4.1/lib目录下的migration_comments.rb文件，在self.setup中找到adapters = %w(PostgreSQL Mysql2 SQLite)，将其改为adapters = %w(PostgreSQL Mysql2 SQLite Dm)即可
