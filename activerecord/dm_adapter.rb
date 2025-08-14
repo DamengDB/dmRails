@@ -103,6 +103,10 @@ module ActiveRecord
         true
       end
 
+      def supports_datetime_with_precision?
+        true
+      end
+
       class << self
         def dbconsole(config, options = {})
           dm_config = config.configuration_hash
