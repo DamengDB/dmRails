@@ -7,9 +7,9 @@ module ActiveRecord
         def quote_column_name(name)
           version = Rails.version
           if version < "6.0"
-            result = @quoted_column_names[name] ||= "\"#{super.gsub('`', '``')}\"".freeze
+            result = @quoted_column_names[name] ||= "\"#{super.gsub('"', '""')}\"".freeze
           else
-            result = self.class.quoted_column_names[name] ||= "\"#{super.gsub('`', '``')}\"".freeze
+            result = self.class.quoted_column_names[name] ||= "\"#{super.gsub('"', '""')}\"".freeze
           end
           result
         end
