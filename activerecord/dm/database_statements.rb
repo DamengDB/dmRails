@@ -26,11 +26,11 @@ module ActiveRecord
         def exec_query(sql, name = "SQL", binds = [], prepare: false)
           if without_prepared_statement?(binds)
             execute_and_free(sql, name) do |result|
-              ActiveRecord::Result.new(result.fields, result.each(as: :array)) if result
+              ActiveRecord::Result.new(result.fields, result.each(as: :array)) if result and result.fields != []
             end
           else
             exec_stmt_and_free(sql, name, binds, cache_stmt: prepare) do |_, result|
-              ActiveRecord::Result.new(result.fields,result.each(as: :array)) if result
+              ActiveRecord::Result.new(result.fields,result.each(as: :array)) if result and result.fields != []
             end
           end
         end

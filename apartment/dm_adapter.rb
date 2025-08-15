@@ -40,7 +40,7 @@ module Apartment
       #   Reset current tenant to the default_tenant
       #
       def reset
-        Apartment.connection.execute "SET SCHEMA \"#{default_tenant}\""
+        Apartment.connection.execute "SET SCHEMA #{quote_table_name(default_tenant)}"
       end
 
       protected
@@ -48,7 +48,7 @@ module Apartment
       def connect_to_new(tenant)
         return reset if tenant.nil?
 
-        Apartment.connection.execute "SET SCHEMA \"#{environmentify(tenant)}\""
+        Apartment.connection.execute "SET SCHEMA #{quote_table_name(environmentify(tenant))}"
 
       rescue ActiveRecord::StatementInvalid => exception
         Apartment::Tenant.reset

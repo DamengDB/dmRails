@@ -17,11 +17,33 @@ require "dm"
 
 module ActiveRecord
   module ConnectionHandling
+    def raise_argument_error(content)
+      raise ArgumentError.new("parse_type is only allowed to be a string type or nil, and when it is a string type, it can only be one of DM, MYSQL or TSQL")
+    end
+
     def dm_connection(config)
       config = config.symbolize_keys
       config[:flags] ||= 0
 
+      if config.include?(:parse_type)
+        if config[:parse_type] != nil and config[:parse_type].is_a?(String)
+          content = "parse_type is only allowed to be a string type or nil, and when it is a string type, it can only be one of DM, MYSQL or TSQL"
+          if ["DM", "MYSQL", "TSQL"].include?(config[:parse_type].upcase)
+            if config[:parse_type].upcase != "DM"
+              $parse_type = config[:parse_type].upcase
+            end
+          else
+            raise_argument_error(content)
+          end
+        elsif config[:parse_type] != nil
+          raise_argument_error(content)
+        end
+      end
+
       client = Dm::Client.new(config)
+      if $parse_type == 'MYSQL' or $parse_type == 'TSQL'
+        client.query("SP_SET_SESSION_PARSE_TYPE('#{$parse_type}')")
+      end
       ConnectionAdapters::DmAdapter.new(client, logger, nil, config)
     rescue Dm::Error => error
       if error.message.include?("Unknown database")
@@ -301,7 +323,7 @@ module ActiveRecord
       end
 
       def rename_column(table_name, column_name, new_column_name)
-        execute("ALTER TABLE #{quote_table_name(table_name)} RENAME COLUMN \"#{column_name}\" TO \"#{new_column_name}\"")
+        execute("ALTER TABLE #{quote_table_name(table_name)} RENAME COLUMN #{quote_table_name(column_name)} TO #{quote_table_name(new_column_name)}")
         rename_column_indexes(table_name, column_name, new_column_name)
       end
 
@@ -316,6 +338,20 @@ module ActiveRecord
         sql
       end
 
+      def build_insert_sql(insert) # :nodoc:
+        sql = +"INSERT #{insert.into} #{insert.values_list}"
+
+        if insert.skip_duplicates?
+          no_op_column = quote_column_name(insert.keys.first)
+          sql << " ON DUPLICATE KEY UPDATE #{no_op_column}=#{no_op_column}"
+        elsif insert.update_duplicates?
+          sql << " ON DUPLICATE KEY UPDATE "
+          sql << insert.updatable_columns.map { |column| "#{column}=VALUES(#{column})" }.join(",")
+        end
+
+        sql
+      end
+
       def column_definitions(table_name)
         (owner, desc_table_name) = extract_schema_qualified_name(table_name)
         if (owner != nil)
@@ -324,7 +360,7 @@ module ActiveRecord
           owner = 'CURRENT_USER'
         end
         query(<<-SQL, "SCHEMA")
-        SELECT LOWER(cols.column_name) AS \"name\",
+        SELECT LOWER(cols.column_name) AS "name",
                 CASE LOWER(cols.data_type)  WHEN 'blob' THEN
                 CASE syscol.scale
                 WHEN 16384 THEN 'clob'
@@ -516,6 +552,14 @@ module ActiveRecord
       end
 
       def supports_partial_index?
+        true
+      end
+
+      def supports_insert_on_duplicate_skip?
+        true
+      end
+
+      def supports_insert_on_duplicate_update?
         true
       end
 

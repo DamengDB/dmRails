@@ -1,7 +1,6 @@
 module ActiveRecord
   module Tasks
     class DmDatabaseTasks
-      ACCESS_DENIED_ERROR = 1045
 
       def prepare_command_options
         args = {
