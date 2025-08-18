@@ -1,3 +1,5 @@
+require "dm"
+
 module ActiveRecord
   module ConnectionAdapters
     module Dm
@@ -24,14 +26,8 @@ module ActiveRecord
         end
 
         def exec_query(sql, name = "SQL", binds = [], prepare: false)
-          if without_prepared_statement?(binds)
-            execute_and_free(sql, name) do |result|
-              ActiveRecord::Result.new(result.fields, result.each(as: :array)) if result and result.fields != []
-            end
-          else
-            exec_stmt_and_free(sql, name, binds, cache_stmt: prepare) do |_, result|
-              ActiveRecord::Result.new(result.fields,result.each(as: :array)) if result and result.fields != []
-            end
+          exec_stmt_and_free(sql, name, binds, cache_stmt: prepare) do |_, result|
+            ActiveRecord::Result.new(result.fields,result.each(as: :array)) if result and result.fields != []
           end
         end
 
@@ -77,7 +73,7 @@ module ActiveRecord
               result = ActiveSupport::Dependencies.interlock.permit_concurrent_loads do
                 stmt.execute(*type_casted_binds)
               end
-            rescue Dm::Error => e
+            rescue ::Dm::Error => e
               if cache_stmt
                 @statements.delete(sql)
               else

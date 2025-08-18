@@ -1,3 +1,5 @@
+require "dm"
+
 require "active_record/connection_adapters/abstract_adapter"
 require "active_record/connection_adapters/statement_pool"
 require "active_record/connection_adapters/dm/column"
@@ -45,7 +47,7 @@ module ActiveRecord
         client.query("SP_SET_SESSION_PARSE_TYPE('#{$parse_type}')")
       end
       ConnectionAdapters::DmAdapter.new(client, logger, nil, config)
-    rescue Dm::Error => error
+    rescue ::Dm::Error => error
       if error.message.include?("Unknown database")
         raise ActiveRecord::NoDatabaseError
       else
