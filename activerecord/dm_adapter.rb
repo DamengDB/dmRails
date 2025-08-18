@@ -105,10 +105,6 @@ module ActiveRecord
         end
       end
 
-      def arel_visitor
-        Arel::Visitors::Dm.new(self)
-      end
-
       def connect
         @connection = Dm::Client.new(@config)
       end
@@ -588,7 +584,6 @@ module ActiveRecord
           m.register_type "blob",          Type::Binary.new(limit: 2**16 - 1)
           m.register_type "float",         Type::Float.new(limit: 24)
           m.register_type "double",        Type::Float.new(limit: 53)
-          m.register_type "bigint",        Type::Integer.new
           m.register_type "integer",       Type::Integer.new
           m.register_type "int",           Type::Integer.new
           m.register_type "json",          DmJson.new
