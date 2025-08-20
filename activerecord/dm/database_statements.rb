@@ -52,6 +52,22 @@ module ActiveRecord
           end
         end
 
+        def begin_db_transaction
+          execute "START TRANSACTION"
+        end
+
+        def begin_isolated_db_transaction(isolation)
+          execute "START TRANSACTION ISOLATION LEVEL #{transaction_isolation_levels.fetch(isolation)}"
+        end
+
+        def commit_db_transaction #:nodoc:
+          execute "COMMIT"
+        end
+
+        def exec_rollback_db_transaction #:nodoc:
+          execute "ROLLBACK"
+        end
+
         def insert(arel, name = nil, pk = nil, id_value = nil, sequence_name = nil, binds = [])
           sql, binds = to_sql_and_binds(arel, binds)
           value = exec_insert(sql, name, binds, pk, sequence_name)
