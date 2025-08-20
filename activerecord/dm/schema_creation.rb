@@ -5,6 +5,13 @@ module ActiveRecord
     module Dm
       class SchemaCreation < AbstractAdapter::SchemaCreation
 
+        def quote_string_value(string)
+          string.gsub(/'/, "''")
+          quote_str = "'" + string + "'"
+
+          quote_str
+        end
+
         private
           def add_column_options!(sql, options)
             sql << " DEFAULT #{quote_default_expression(options[:default], options[:column])}" if !options[:default].nil?
@@ -20,6 +27,10 @@ module ActiveRecord
               sql << " AUTO_INCREMENT"
             end
             sql
+
+            if options.key?(:comment) and options[:comment].is_a?(String)
+              sql << " COMMENT #{quote_string_value(options[:comment])}" if options[:comment].present?
+            end
           end
 
           def visit_ChangeColumnDefinition(o)
