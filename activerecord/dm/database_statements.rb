@@ -1,5 +1,3 @@
-require "dm"
-
 module ActiveRecord
   module ConnectionAdapters
     module Dm
@@ -26,8 +24,31 @@ module ActiveRecord
         end
 
         def exec_query(sql, name = "SQL", binds = [], prepare: false)
-          exec_stmt_and_free(sql, name, binds, cache_stmt: prepare) do |_, result|
-            ActiveRecord::Result.new(result.fields,result.each(as: :array)) if result and result.fields != []
+          if binds == []
+            execute_and_free(sql, name) do |result|
+              ActiveRecord::Result.new(result.fields, result.each(as: :array)) if result and result.fields != []
+            end
+          else
+            if without_prepared_statement?(binds)
+              begin
+                execute_and_free(sql, name) do |result|
+                  ActiveRecord::Result.new(result.fields, result.each(as: :array)) if result and result.fields != []
+                end
+              rescue ::Dm::Error => e
+                code = e.instance_variable_get(:@error_number) || 0
+                if code == $ER_NEED_MORE_PARAM
+                  exec_stmt_and_free(sql, name, binds, cache_stmt: prepare) do |_, result|
+                    ActiveRecord::Result.new(result.fields,result.each(as: :array)) if result and result.fields != []
+                  end
+                else
+                  raise e
+                end
+              end
+            else
+              exec_stmt_and_free(sql, name, binds, cache_stmt: prepare) do |_, result|
+                ActiveRecord::Result.new(result.fields,result.each(as: :array)) if result and result.fields != []
+              end
+            end
           end
         end
 
@@ -37,11 +58,6 @@ module ActiveRecord
           id_value || last_inserted_id(value)
         end
         alias create insert
-
-        def exec_insert(sql, name = nil, binds = [], pk = nil, sequence_name = nil)
-          sql, binds = sql_for_insert(sql, pk, binds)
-          exec_query(sql, name, binds)
-        end
 
         def exec_delete(sql, name = nil, binds = [])
           exec_stmt_and_free(sql, name, binds) { |stmt| stmt.affected_rows }

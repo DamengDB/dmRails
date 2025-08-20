@@ -1,5 +1,3 @@
-require "dm"
-
 require "active_record/connection_adapters/abstract_adapter"
 require "active_record/connection_adapters/statement_pool"
 require "active_record/connection_adapters/dm/column"
@@ -162,7 +160,6 @@ module ActiveRecord
         yield execute(sql, name)
       end
 
-
       def commit_db_transaction # :nodoc:
         execute("COMMIT")
       end
@@ -173,6 +170,15 @@ module ActiveRecord
 
       def empty_insert_statement_value(primary_key = nil) # :nodoc:
         "DEFAULT VALUES"
+      end
+
+      def explain(arel, binds = [])
+        sql     = "EXPLAIN FOR #{to_sql(arel, binds)}"
+        start   = Concurrent.monotonic_time
+        result  = exec_query(sql, "EXPLAIN", binds)
+        elapsed = Concurrent.monotonic_time - start
+
+        Dm::ExplainPrettyPrinter.new.pp(result, elapsed)
       end
 
       def recreate_database(name, options = {})
@@ -229,7 +235,8 @@ module ActiveRecord
         execute "DROP INDEX #{quote_column_name(index_name)}"
       end
 
-      ER_VIOLATE_UNIQUE_CONSTRAINT        = -6602
+      $ER_VIOLATE_UNIQUE_CONSTRAINT        = -6602
+      $ER_NEED_MORE_PARAM                  = -6804
 
       def analyse_exception(exception)
         if exception.nil?
@@ -249,11 +256,15 @@ module ActiveRecord
         code = analyse_exception(exception)
         if code.is_a?(Integer)
           case code
-          when ER_VIOLATE_UNIQUE_CONSTRAINT
+          when $ER_VIOLATE_UNIQUE_CONSTRAINT
             RecordNotUnique.new(message, sql: sql, binds: binds)
+          when $ER_NEED_MORE_PARAM
+            ::Dm::Error.new(message, code)
           else
             super
           end
+        else
+          super
         end
       end
 
@@ -386,15 +397,15 @@ module ActiveRecord
       def foreign_keys(table_name)
         (_owner, desc_table_name) = extract_schema_qualified_name(table_name)
         fk_info = query(<<~SQL.squish, "SCHEMA")
-            SELECT r.table_name to_table
-                  ,rc.column_name references_column
-                  ,cc.column_name
-                  ,c.constraint_name name
-                  ,c.delete_rule
+            SELECT r.table_name as "to_table"
+                  ,rc.column_name as "references_column"
+                  ,cc.column_name as "column_name"
+                  ,c.constraint_name as "name"
+                  ,c.delete_rule as "delete_rule"
               FROM all_constraints c, all_cons_columns cc,
                    all_constraints r, all_cons_columns rc
              WHERE c.owner = SYS_CONTEXT('userenv', 'current_schema')
-               AND c.table_name = \'#{desc_table_name}\'
+               AND c.table_name = '#{desc_table_name}'
                AND c.constraint_type = 'R'
                AND cc.owner = c.owner
                AND cc.constraint_name = c.constraint_name
@@ -586,6 +597,7 @@ module ActiveRecord
           m.register_type "blob",          Type::Binary.new(limit: 2**16 - 1)
           m.register_type "float",         Type::Float.new(limit: 24)
           m.register_type "double",        Type::Float.new(limit: 53)
+          m.register_type "bigint",        Type::BigInteger.new
           m.register_type "integer",       Type::Integer.new
           m.register_type "int",           Type::Integer.new
           m.register_type "json",          DmJson.new
