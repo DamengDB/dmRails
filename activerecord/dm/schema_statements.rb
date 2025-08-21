@@ -15,7 +15,7 @@ module ActiveRecord
             schema = "\'#{scheam}\'"
           end
           result = query(<<-SQL, "SCHEMA")
-            SELECT i.table_name AS "table_name", i.index_name AS "index_name", i.uniqueness AS "uniqueness",
+            SELECT i.table_name AS "table_name", c.descend AS "order", i.index_name AS "index_name", i.uniqueness AS "uniqueness",
               i.index_type AS "index_type", i.ityp_owner AS "ityp_owner", i.ityp_name AS "ityp_name", i.parameters AS "parameters",
               i.tablespace_name AS "tablespace_name",
               c.column_name AS "column_name", atc.virtual_column AS "virtual_column"
@@ -40,6 +40,7 @@ module ActiveRecord
               index_name = row["index_name"]
               unique = row["uniqueness"]
               index_type = row["index_type"]
+              order = row["order"]
               if index_type == 'NORMAL'
                 using_type = 'BTREE'
               else
@@ -50,6 +51,7 @@ module ActiveRecord
           else
             id = 0
             pk_arr = []
+            order_dict = {}
             reflect_dict = {}
             result.map do |row|
               if reflect_dict.include?(row['index_name'])
@@ -57,12 +59,17 @@ module ActiveRecord
                 pk_temp = pk_arr[sort_id]
                 if pk_temp['column_name'].is_a?(String)
                   new_array = [pk_temp['column_name'], row['column_name']]
+
                   pk_arr[sort_id]['column_name'] = new_array
                 else
                   pk_arr[sort_id]['column_name'].push(row['column_name'])
                 end
+
+                pk_arr[sort_id]['order'][row['column_name']] = row['order']
+
               else
                 pk_arr.push(row)
+                pk_arr[0]['order'] = {pk_arr[0]['column_name'] => row['order']}
                 reflect_dict.store(row['index_name'], id)
                 id += 1
               end
@@ -73,12 +80,13 @@ module ActiveRecord
               unique = row["uniqueness"]
               index_type = row["index_type"]
               columns = row['column_name']
+              orders = row['order']
               if index_type == 'NORMAL'
                 using_type = 'BTREE'
               else
                 using_type = index_type
               end
-              IndexDefinition.new(table_name, index_name, unique == 'UNIQUE', columns, type: index_type, using: using_type)
+              IndexDefinition.new(table_name, index_name, unique == 'UNIQUE', columns, orders: orders, type: index_type, using: using_type)
             end.compact
           end
         end

@@ -117,6 +117,10 @@ module ActiveRecord
         end
       end
 
+      def arel_visitor
+        Arel::Visitors::Dm.new(self)
+      end
+
       def supports_foreign_keys?
         true
       end
