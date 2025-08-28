@@ -121,6 +121,7 @@ module ActiveRecord
         Arel::Visitors::Dm.new(self)
       end
 
+
       def supports_foreign_keys?
         true
       end
@@ -200,7 +201,7 @@ module ActiveRecord
         scope = quoted_scope(table_name)
 
         query_value(<<~SQL, "SCHEMA").presence
-          SELECT COMMENTS 
+          {table_comment}SELECT COMMENTS 
           FROM DBA_TAB_COMMENTS
           WHERE OWNER = #{scope[:schema]}
           AND TABLE_NAME = #{scope[:name]}

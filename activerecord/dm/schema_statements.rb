@@ -94,19 +94,36 @@ module ActiveRecord
         private
           def data_source_sql(name = nil, type: nil)
             scope = quoted_scope(name, type: type)
-            if type == "VIEW"
-              all_name = "all_views"
-              col_name = "view_name"
+            if type != nil
+              if type == "VIEW"
+                all_name = "all_views"
+                col_name = "view_name"
+              else type == "BASE TABLE"
+                all_name = "all_tables"
+                col_name = "table_name"
+              end
+
+              sql = "{data_source_sql}SELECT tab.#{col_name} FROM #{all_name} tab, sysobjects obj"
+              sql << " WHERE obj.name = tab.#{col_name}"
+              sql << " AND tab.owner = #{scope[:schema]}"
+              sql << " AND tab.#{col_name} = #{scope[:name]}" if scope[:name]
+              sql << " AND obj.subtype$ = #{scope[:type]}" if scope[:type]
+              sql
             else
-              all_name = "all_tables"
-              col_name = "table_name"
+              sql = "{data_source_sql}SELECT tab.table_name AS \"table_name\" FROM all_tables tab, sysobjects obj  "
+              sql << " WHERE obj.name = tab.table_name"
+              sql << " AND tab.owner = #{scope[:schema]}"
+              sql << " AND tab.table_name = #{scope[:name]}" if scope[:name]
+              sql << " AND obj.subtype$ = #{scope[:type]}" if scope[:type]
+              sql << "\n UNION ALL\n"
+              sql << "SELECT views.VIEW_NAME AS \"table_name\" FROM all_views views, sysobjects obj "
+              sql << " WHERE obj.name = views.view_name"
+              sql << " AND views.owner = #{scope[:schema]}"
+              sql << " AND views.view_name = #{scope[:name]}" if scope[:name]
+              sql << " AND obj.subtype$ = #{scope[:type]}" if scope[:type]
+              sql
+
             end
-            sql = "{data_source_sql}SELECT tab.#{col_name} FROM #{all_name} tab, sysobjects obj"
-            sql << " WHERE obj.name = tab.#{col_name}"
-            sql << " AND tab.owner = #{scope[:schema]}"
-            sql << " AND tab.#{col_name} = #{scope[:name]}" if scope[:name]
-            sql << " AND obj.subtype$ = #{scope[:type]}" if scope[:type]
-            sql
           end
 
           def add_index_length(quoted_columns, **options)
