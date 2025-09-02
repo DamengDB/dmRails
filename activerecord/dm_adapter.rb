@@ -178,7 +178,11 @@ module ActiveRecord
       end
 
       def explain(arel, binds = [])
-        sql     = "EXPLAIN FOR #{to_sql(arel, binds)}"
+        if $parse_type == 'MYSQL'
+          sql = "EXPLAIN  #{to_sql(arel, binds)}"
+        else
+          sql = "EXPLAIN FOR #{to_sql(arel, binds)}"
+        end
         start   = Concurrent.monotonic_time
         result  = exec_query(sql, "EXPLAIN", binds)
         elapsed = Concurrent.monotonic_time - start
@@ -211,7 +215,11 @@ module ActiveRecord
       def change_table_comment(table_name, comment_or_changes)
         comment = extract_new_comment_value(comment_or_changes)
         comment = "" if comment.nil?
-        execute("COMMENT ON TABLE #{quote_table_name(table_name)} IS '#{quote_string(comment)}'")
+        if $parse_type == 'MYSQL'
+          execute("ALTER TABLE #{quote_table_name(table_name)} COMMENT '#{quote_string(comment)}'")
+        else
+          execute("COMMENT ON TABLE #{quote_table_name(table_name)} IS '#{quote_string(comment)}'")
+        end
       end
 
       def rename_table(table_name, new_name, **options)
