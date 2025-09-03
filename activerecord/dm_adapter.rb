@@ -174,7 +174,12 @@ module ActiveRecord
       end
 
       def empty_insert_statement_value(primary_key = nil) # :nodoc:
-        "DEFAULT VALUES"
+        if $parse_type == 'MYSQL'
+          sql = 'VALUES()'
+        else
+          sql = "DEFAULT VALUES"
+        end
+        sql
       end
 
       def explain(arel, binds = [])
