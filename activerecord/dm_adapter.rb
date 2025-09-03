@@ -539,9 +539,9 @@ module ActiveRecord
         default_value = nil if is_virtual
         version = Rails.version
         if version < "6.0"
-          result = new_column(field["name"], default_value, type_metadata, field["nullable"] == "Y", table_name, comment: field["column_comment"])
+          result = new_column(field["name"], default_value, type_metadata, field["nullable"] == "y", table_name, comment: field["column_comment"])
         else
-          result = Dm::Column.new(field["name"], default_value, type_metadata, field["nullable"] == "Y", comment: field["column_comment"])
+          result = Dm::Column.new(field["name"], default_value, type_metadata, field["nullable"] == "y", comment: field["column_comment"])
         end
         result
       end
