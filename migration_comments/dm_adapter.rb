@@ -3,6 +3,19 @@ include ActiveRecord::ConnectionAdapters::Dm::Quoting
 module MigrationComments::ActiveRecord::ConnectionAdapters
   module DmAdapter
 
+    def quote_table_name(name)
+      if $parse_type == "MYSQL"
+        quote_sign = "`"
+        dquote_sign = "``"
+      else
+        quote_sign = '"'
+        dquote_sign = '""'
+      end
+      name.gsub(quote_sign, dquote_sign) if name.include?(quote_sign)
+      name = quote_sign + "#{name}" + quote_sign
+      name
+    end
+
     def comments_supported?
       true
     end
@@ -12,7 +25,7 @@ module MigrationComments::ActiveRecord::ConnectionAdapters
     end
 
     def set_column_comment(table_name, column_name, comment_text)
-      execute "COMMENT ON COLUMN #{quote_table_name(table_name)}.#{quote_column_name column_name} IS #{escaped_comment(comment_text)}"
+      execute "COMMENT ON COLUMN #{quote_table_name(table_name)}.#{quote_table_name(column_name)} IS #{escaped_comment(comment_text)}"
     end
 
     def retrieve_table_comment(table_name)

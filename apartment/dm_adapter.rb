@@ -37,6 +37,19 @@ module Apartment
         reset
       end
 
+    def quote_table_name(name)
+      if $parse_type == "MYSQL"
+        quote_sign = "`"
+        dquote_sign = "``"
+      else
+        quote_sign = '"'
+        dquote_sign = '""'
+      end
+      name.gsub(quote_sign, dquote_sign) if name.include?(quote_sign)
+      name = quote_sign + "#{name}" + quote_sign
+      name
+    end
+
       #   Reset current tenant to the default_tenant
       #
       def reset
