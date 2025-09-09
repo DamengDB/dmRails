@@ -1,3 +1,5 @@
+include ActiveRecord::ConnectionAdapters::Dm::Quoting
+
 module MigrationComments::ActiveRecord::ConnectionAdapters
   module DmAdapter
 
@@ -6,11 +8,11 @@ module MigrationComments::ActiveRecord::ConnectionAdapters
     end
 
     def set_table_comment(table_name, comment_text)
-      execute "COMMENT ON TABLE #{quote_table_name table_name} IS #{escaped_comment(comment_text)}"
+      execute "COMMENT ON TABLE #{quote_table_name(table_name)} IS #{escaped_comment(comment_text)}"
     end
 
     def set_column_comment(table_name, column_name, comment_text)
-      execute "COMMENT ON COLUMN #{quote_table_name table_name}.#{quote_column_name column_name} IS #{escaped_comment(comment_text)}"
+      execute "COMMENT ON COLUMN #{quote_table_name(table_name)}.#{quote_column_name column_name} IS #{escaped_comment(comment_text)}"
     end
 
     def retrieve_table_comment(table_name)
