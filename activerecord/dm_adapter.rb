@@ -326,7 +326,12 @@ module ActiveRecord
 
       def change_column(table_name, column_name, type, **options) # :nodoc:
         if $parse_type != 'MYSQL' and options.has_key?(:comment) and options[:comment] != nil
-          change_column_comment(table_name, column_name, options[:comment])
+          if options[:comment].is_a?(String)
+            comment_str = options[:comment]
+          else
+            comment_str = options[:comment].to_s
+          end
+          change_column_comment(table_name, column_name, comment_str)
         end
         execute("ALTER TABLE #{quote_table_name(table_name)} #{change_column_for_alter(table_name, column_name, type, **options)}")
       end
