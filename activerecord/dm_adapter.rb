@@ -79,7 +79,7 @@ module ActiveRecord
         date:        { name: "date" },
         blob:        { name: "blob" },
         binary:      { name: "binary"},
-        boolean:     { name: "tinyint"},
+        boolean:     { name: "bit"},
         json:        { name: "json" },
         jsonb:       { name: "jsonb" },
         varchar:     { name: "varchar" },
@@ -311,10 +311,23 @@ module ActiveRecord
 
       def change_column_comment(table_name, column_name, comment_or_changes) # :nodoc:
         comment = extract_new_comment_value(comment_or_changes)
-        change_column table_name, column_name, nil, comment: comment
+        if $parse_type == 'MYSQL'
+          change_column table_name, column_name, nil, comment: comment
+        else
+          if comment.is_a?(String)
+            comment_str = comment.gsub(/'/, "''")
+          else
+            comment_str = comment.comment_text.gsub(/'/, "''")
+          end
+          comment_str = "'" + comment_str + "'"
+          execute("COMMENT ON COLUMN #{quote_table_name(table_name)}.#{quote_column_name(column_name)} IS #{comment_str}")
+        end
       end
 
       def change_column(table_name, column_name, type, **options) # :nodoc:
+        if $parse_type != 'MYSQL'
+          change_column_comment(table_name, column_name, options[:comment])
+        end
         execute("ALTER TABLE #{quote_table_name(table_name)} #{change_column_for_alter(table_name, column_name, type, **options)}")
       end
 

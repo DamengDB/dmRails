@@ -26,19 +26,32 @@ module ActiveRecord
             if options[:auto_increment] == true
               sql << " AUTO_INCREMENT"
             end
-            sql
-
             if options.key?(:comment) and options[:comment].is_a?(String)
               sql << " COMMENT #{quote_string_value(options[:comment])}" if options[:comment].present?
             end
+
+            sql
           end
 
           def visit_ChangeColumnDefinition(o)
+            if $parse_type != 'MYSQL'
+              has_comment = false
+              if o.column.options.key?(:comment)
+                has_comment = true
+                comment_str = o.column.options[:comment]
+                o.column.options.delete(:comment)
+              end
+            end
             change_column_sql = "MODIFY #{accept(o.column)}"
             if column_options(o.column)[:first]
               change_column_sql << "FIRST"
             elsif column_options(o.column)[:after]
               change_column_sql << " AFTER #{quote_column_name(column_options(o.column)[:after])}"
+            end
+            if $parse_type != 'MYSQL'
+              if has_comment
+                o.column.options[:comment] = comment_str
+              end
             end
             change_column_sql
           end
