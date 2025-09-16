@@ -34,13 +34,11 @@ module ActiveRecord
           end
 
           def visit_ChangeColumnDefinition(o)
-            if $parse_type != 'MYSQL'
-              has_comment = false
-              if o.column.options.key?(:comment)
-                has_comment = true
-                comment_str = o.column.options[:comment]
-                o.column.options.delete(:comment)
-              end
+            has_comment = false
+            if o.column.options.key?(:comment)
+              has_comment = true
+              comment_str = o.column.options[:comment]
+              o.column.options.delete(:comment)
             end
             change_column_sql = "MODIFY #{accept(o.column)}"
             if column_options(o.column)[:first]
@@ -48,14 +46,27 @@ module ActiveRecord
             elsif column_options(o.column)[:after]
               change_column_sql << " AFTER #{quote_column_name(column_options(o.column)[:after])}"
             end
-            if $parse_type != 'MYSQL'
-              if has_comment
-                o.column.options[:comment] = comment_str
-              end
+            if has_comment
+              o.column.options[:comment] = comment_str
             end
             change_column_sql
           end
 
+      end
+    end
+
+    module DmMySQL
+      class SchemaCreation < Dm::SchemaCreation
+        private
+          def visit_ChangeColumnDefinition(o)
+            change_column_sql = "MODIFY #{accept(o.column)}"
+            if column_options(o.column)[:first]
+              change_column_sql << "FIRST"
+            elsif column_options(o.column)[:after]
+              change_column_sql << " AFTER #{quote_column_name(column_options(o.column)[:after])}"
+            end
+            change_column_sql
+          end
       end
     end
   end

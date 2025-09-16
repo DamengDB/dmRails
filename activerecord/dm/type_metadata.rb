@@ -27,7 +27,12 @@ module ActiveRecord
           [self.class, @type_metadata, virtual]
         end
 
-        end
+      end
+    end
+
+    module DmMySQL
+      class TypeMetadata < Dm::TypeMetadata
+      end
     end
   end
 end

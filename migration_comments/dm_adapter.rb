@@ -1,16 +1,9 @@
-include ActiveRecord::ConnectionAdapters::Dm::Quoting
-
 module MigrationComments::ActiveRecord::ConnectionAdapters
   module DmAdapter
 
     def quote_table_name(name)
-      if $parse_type == "MYSQL"
-        quote_sign = "`"
-        dquote_sign = "``"
-      else
-        quote_sign = '"'
-        dquote_sign = '""'
-      end
+      quote_sign = '"'
+      dquote_sign = '""'
       name.gsub(quote_sign, dquote_sign) if name.include?(quote_sign)
       name = quote_sign + "#{name}" + quote_sign
       name
@@ -83,24 +76,34 @@ module MigrationComments::ActiveRecord::ConnectionAdapters
 
     def table_comment_sql(table_name)
       <<SQL
-SELECT COMMENTS FROM ALL_TAB_COMMENTS
-  WHERE OWNER = '#{database_name}'
-  AND TABLE_NAME = '#{table_name}'
-SQL
+      SELECT COMMENTS FROM ALL_TAB_COMMENTS
+        WHERE OWNER = '#{database_name}'
+        AND TABLE_NAME = '#{table_name}'
+      SQL
     end
 
     def column_comment_sql(table_name, *column_names)
       col_matcher_sql = " AND column_name IN (#{column_names.map{|c_name| "'#{c_name}'"}.join(',')})" unless column_names.empty?
       <<SQL
-SELECT COLUMN_NAME, COMMENTS FROM ALL_COL_COMMENTS
-  WHERE OWNER = '#{database_name}'
-  AND TABLE_NAME = '#{table_name}' #{col_matcher_sql}
-SQL
+      SELECT COLUMN_NAME, COMMENTS FROM ALL_COL_COMMENTS
+        WHERE OWNER = '#{database_name}'
+        AND TABLE_NAME = '#{table_name}' #{col_matcher_sql}
+      SQL
     end
 
     def database_name
       @database_name ||= select_value("SELECT SYS_CONTEXT('userenv', 'current_schema') FROM DUAL;")
     end
 
+  end
+
+  module DmMySQLAdapter < DmAdapter
+    def quote_table_name(name)
+      quote_sign = '"'
+      dquote_sign = '""'
+      name.gsub(quote_sign, dquote_sign) if name.include?(quote_sign)
+      name = quote_sign + "#{name}" + quote_sign
+      name
+    end
   end
 end

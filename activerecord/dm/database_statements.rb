@@ -125,5 +125,11 @@ module ActiveRecord
         end
       end
     end
+
+    module DmMySQL
+      module DatabaseStatements
+        include Dm::DatabaseStatements
+      end
+    end
   end
 end

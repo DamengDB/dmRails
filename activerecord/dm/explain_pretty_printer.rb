@@ -55,5 +55,11 @@ module ActiveRecord
           end
       end
     end
+
+    module DmMySQL
+      class ExplainPrettyPrinter < Dm::ExplainPrettyPrinter
+      end
+    end
+    
   end
 end

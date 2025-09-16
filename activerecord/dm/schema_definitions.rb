@@ -91,5 +91,17 @@ module ActiveRecord
         include ColumnMethods
       end
     end
+
+    module DmMySQL
+      module ColumnMethods
+        include Dm::ColumnMethods
+      end
+
+      class TableDefinition < Dm::TableDefinition
+      end
+
+      class Table < Dm::Table
+      end
+    end
   end
 end

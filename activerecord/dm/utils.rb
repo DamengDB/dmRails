@@ -51,5 +51,14 @@ module ActiveRecord
         end
       end
     end
+
+    module DmMySQL
+      class Name < Dm::Name
+      end
+
+      module Utils
+        include Dm::Utils
+      end
+    end
   end
 end

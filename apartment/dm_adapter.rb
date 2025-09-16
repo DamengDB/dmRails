@@ -11,6 +11,12 @@ module Apartment
         Adapters::DmSchemaAdapter.new(config) :
         Adapters::DmAdapter.new(config)
     end
+
+    def self.dmmysql_adapter(config)
+      Apartment.use_schemas ?
+        Adapters::DmMySQLSchemaAdapter.new(config) :
+        Adapters::DmAdapter.new(config)
+    end
   end
 
   module Adapters
@@ -30,25 +36,22 @@ module Apartment
     end
 
     class DmSchemaAdapter < AbstractAdapter
+
       def initialize(config)
         super
 
         @default_tenant = config[:database]
         reset
+
+        @quote_sign = '"'
+        @dquote_sign = '""'
       end
 
-    def quote_table_name(name)
-      if $parse_type == "MYSQL"
-        quote_sign = "`"
-        dquote_sign = "``"
-      else
-        quote_sign = '"'
-        dquote_sign = '""'
+      def quote_table_name(name)
+        name.gsub(quote_sign, dquote_sign) if name.include?(quote_sign)
+        name = quote_sign + "#{name}" + quote_sign
+        name
       end
-      name.gsub(quote_sign, dquote_sign) if name.include?(quote_sign)
-      name = quote_sign + "#{name}" + quote_sign
-      name
-    end
 
       #   Reset current tenant to the default_tenant
       #
@@ -79,6 +82,19 @@ module Apartment
       def reset_on_connection_exception?
         true
       end
+    end
+
+    class DmMySQLSchemaAdapter < AbstractAdapter
+
+      def initialize(config)
+        super
+        @default_tenant = config[:database]
+        reset
+
+        @quote_sign = '`'
+        @dquote_sign = '``'
+      end
+
     end
   end
 end

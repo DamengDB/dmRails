@@ -25,13 +25,13 @@ module ActiveRecord
       config = config.symbolize_keys
       config[:flags] ||= 0
 
+      parse_type = 'DM'
+
       if config.include?(:parse_type)
         if config[:parse_type] != nil and config[:parse_type].is_a?(String)
           content = "parse_type is only allowed to be a string type or nil, and when it is a string type, it can only be one of DM, MYSQL or TSQL"
           if ["DM", "MYSQL", "TSQL"].include?(config[:parse_type].upcase)
-            if config[:parse_type].upcase != "DM"
-              $parse_type = config[:parse_type].upcase
-            end
+            parse_type = config[:parse_type].upcase
           else
             raise_argument_error(content)
           end
@@ -41,10 +41,14 @@ module ActiveRecord
       end
 
       client = Dm::Client.new(config)
-      if $parse_type == 'MYSQL' or $parse_type == 'TSQL'
-        client.query("SP_SET_SESSION_PARSE_TYPE('#{$parse_type}')")
+      if parse_type == 'MYSQL' or parse_type == 'TSQL'
+        client.query("SP_SET_SESSION_PARSE_TYPE('#{parse_type}')")
       end
-      ConnectionAdapters::DmAdapter.new(client, logger, nil, config)
+      if parse_type == 'MYSQL'
+        ConnectionAdapters::DmMySQLAdapter.new(client, logger, nil, config)
+      else
+        ConnectionAdapters::DmAdapter.new(client, logger, nil, config)
+      end
     rescue ::Dm::Error => error
       if error.message.include?("Unknown database")
         raise ActiveRecord::NoDatabaseError
@@ -174,20 +178,12 @@ module ActiveRecord
       end
 
       def empty_insert_statement_value(primary_key = nil) # :nodoc:
-        if $parse_type == 'MYSQL'
-          sql = 'VALUES()'
-        else
-          sql = "DEFAULT VALUES"
-        end
+        sql = "DEFAULT VALUES"
         sql
       end
 
       def explain(arel, binds = [])
-        if $parse_type == 'MYSQL'
-          sql = "EXPLAIN  #{to_sql(arel, binds)}"
-        else
-          sql = "EXPLAIN FOR #{to_sql(arel, binds)}"
-        end
+        sql = "EXPLAIN FOR #{to_sql(arel, binds)}"
         start   = Concurrent.monotonic_time
         result  = exec_query(sql, "EXPLAIN", binds)
         elapsed = Concurrent.monotonic_time - start
@@ -220,11 +216,7 @@ module ActiveRecord
       def change_table_comment(table_name, comment_or_changes)
         comment = extract_new_comment_value(comment_or_changes)
         comment = "" if comment.nil?
-        if $parse_type == 'MYSQL'
-          execute("ALTER TABLE #{quote_table_name(table_name)} COMMENT '#{quote_string(comment)}'")
-        else
-          execute("COMMENT ON TABLE #{quote_table_name(table_name)} IS '#{quote_string(comment)}'")
-        end
+        execute("COMMENT ON TABLE #{quote_table_name(table_name)} IS '#{quote_string(comment)}'")
       end
 
       def rename_table(table_name, new_name, **options)
@@ -311,21 +303,17 @@ module ActiveRecord
 
       def change_column_comment(table_name, column_name, comment_or_changes) # :nodoc:
         comment = extract_new_comment_value(comment_or_changes)
-        if $parse_type == 'MYSQL'
-          change_column table_name, column_name, nil, comment: comment
+        if comment.is_a?(String)
+          comment_str = comment.gsub(/'/, "''")
         else
-          if comment.is_a?(String)
-            comment_str = comment.gsub(/'/, "''")
-          else
-            comment_str = comment.comment_text.gsub(/'/, "''")
-          end
-          comment_str = "'" + comment_str + "'"
-          execute("COMMENT ON COLUMN #{quote_table_name(table_name)}.#{quote_column_name(column_name)} IS #{comment_str}")
+          comment_str = comment.comment_text.gsub(/'/, "''")
         end
+        comment_str = "'" + comment_str + "'"
+        execute("COMMENT ON COLUMN #{quote_table_name(table_name)}.#{quote_column_name(column_name)} IS #{comment_str}")
       end
 
       def change_column(table_name, column_name, type, **options) # :nodoc:
-        if $parse_type != 'MYSQL' and options.has_key?(:comment) and options[:comment] != nil
+        if options.has_key?(:comment) and options[:comment] != nil
           if options[:comment].is_a?(String)
             comment_str = options[:comment]
           else
@@ -673,6 +661,48 @@ module ActiveRecord
         end
         ActiveRecord::Type.register(:json, DmJson, adapter: :dm)
         ActiveRecord::Type.register(:jsonb, DmJsonb, adapter: :dm)
+    end
+
+    class DmMySQLAdapter < DmAdapter
+
+      ADAPTER_NAME = "DmMySQL".freeze
+
+      include DmMySQL::Quoting
+      include DmMySQL::DatabaseStatements
+
+      def arel_visitor
+        Arel::Visitors::DmMySQL.new(self)
+      end
+
+      def empty_insert_statement_value(primary_key = nil) # :nodoc:
+        sql = 'VALUES()'
+        sql
+      end
+
+      def explain(arel, binds = [])
+        sql = "EXPLAIN  #{to_sql(arel, binds)}"
+        start   = Concurrent.monotonic_time
+        result  = exec_query(sql, "EXPLAIN", binds)
+        elapsed = Concurrent.monotonic_time - start
+
+        Dm::ExplainPrettyPrinter.new.pp(result, elapsed)
+      end
+
+      def change_table_comment(table_name, comment_or_changes)
+        comment = extract_new_comment_value(comment_or_changes)
+        comment = "" if comment.nil?
+        execute("ALTER TABLE #{quote_table_name(table_name)} COMMENT '#{quote_string(comment)}'")
+      end
+
+      def change_column_comment(table_name, column_name, comment_or_changes) # :nodoc:
+        comment = extract_new_comment_value(comment_or_changes)
+        change_column table_name, column_name, nil, comment: comment
+      end
+
+      def change_column(table_name, column_name, type, **options) # :nodoc:
+        execute("ALTER TABLE #{quote_table_name(table_name)} #{change_column_for_alter(table_name, column_name, type, **options)}")
+      end
+
     end
   end
 end

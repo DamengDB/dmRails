@@ -3,7 +3,15 @@
 module Arel # :nodoc: all
   module Visitors
     class Dm < Arel::Visitors::ToSql
+
+      def initialize(connection)
+        super(connection)
+        @quote_sign = '"'
+        @dquote_sign = '""'
+      end
+
       private
+
         def visit_Arel_Nodes_SelectStatement(o, collector)
           # Oracle does not allow LIMIT clause with select for update
           if o.limit && o.lock
@@ -16,36 +24,21 @@ module Arel # :nodoc: all
         end
 
         def visit_Arel_Nodes_SelectOptions(o, collector)
-          if $parse_type == 'MYSQL'
-            collector = maybe_visit o.limit, collector
-            collector = maybe_visit o.offset, collector
-          else
-            collector = maybe_visit o.offset, collector
-            collector = maybe_visit o.limit, collector
-          end
+          collector = maybe_visit o.offset, collector
+          collector = maybe_visit o.limit, collector
           maybe_visit o.lock, collector
         end
 
         def visit_Arel_Nodes_Limit(o, collector)
-          if $parse_type == 'MYSQL'
-            collector << "LIMIT "
-            collector = visit o.expr, collector
-          else
-            collector << "FETCH FIRST "
-            collector = visit o.expr, collector
-            collector << " ROWS ONLY"
-          end
+          collector << "FETCH FIRST "
+          collector = visit o.expr, collector
+          collector << " ROWS ONLY"
         end
 
         def visit_Arel_Nodes_Offset(o, collector)
-          if $parse_type == 'MYSQL'
-            collector << "OFFSET "
-            visit o.expr, collector
-          else
-            collector << "OFFSET "
-            visit o.expr, collector
-            collector << " ROWS"
-          end
+          collector << "OFFSET "
+          visit o.expr, collector
+          collector << " ROWS"
         end
 
         def visit_Arel_Nodes_Except(o, collector)
@@ -114,13 +107,6 @@ module Arel # :nodoc: all
         end
 
         def aggregate(name, o, collector)
-          if $parse_type == "MYSQL"
-            quote_sign = '`'
-            dquote_sign = '``'
-          else
-            quote_sign = '"'
-            dquote_sign = '""'
-          end
           collector << "#{name}("
           quote_flag = false
           need_quote_flag = true
@@ -141,44 +127,37 @@ module Arel # :nodoc: all
           end
 
           if need_quote_flag and quote_flag
-            collector << quote_sign
+            collector << @quote_sign
           end
 
           if o.distinct
             collector << "DISTINCT "
           end
           if need_quote_flag
-            collector = inject_join(o.expressions, collector, quote_sign + ", " + quote_sign)
+            collector = inject_join(o.expressions, collector, @quote_sign + ", " + @quote_sign)
           else
             collector = inject_join(o.expressions, collector, ", ")
           end
           if need_quote_flag and quote_flag
-            collector << quote_sign
+            collector << @quote_sign
           end
           collector << ")"
           if o.alias
             collector << " AS "
-            collector << quote_sign
-            collector << o.alias.to_s.gsub(quote_sign, dquote_sign)
-            collector << quote_sign
+            collector << @quote_sign
+            collector << o.alias.to_s.gsub(@quote_sign, @dquote_sign)
+            collector << @quote_sign
           else
             collector
           end
         end
 
         def visit_Arel_Nodes_As(o, collector)
-          if $parse_type == "MYSQL"
-            quote_sign = '`'
-            dquote_sign = '``'
-          else
-            quote_sign = '"'
-            dquote_sign = '""'
-          end
           collector = visit o.left, collector
           collector << " AS "
-          collector << quote_sign
-          collector << o.right.to_s.gsub(quote_sign, dquote_sign)
-          collector << quote_sign
+          collector << @quote_sign
+          collector << o.right.to_s.gsub(@quote_sign, @dquote_sign)
+          collector << @quote_sign
         end
 
         def is_distinct_from(o, collector)
@@ -187,5 +166,33 @@ module Arel # :nodoc: all
           collector << ")"
         end
     end
+
+    class DmMySQL < Dm
+
+      def initialize(connection)
+        super(connection)
+        @quote_sign = '`'
+        @dquote_sign = '``'
+      end
+
+      private
+        def visit_Arel_Nodes_SelectOptions(o, collector)
+          collector = maybe_visit o.limit, collector
+          collector = maybe_visit o.offset, collector
+          maybe_visit o.lock, collector
+        end
+
+        def visit_Arel_Nodes_Limit(o, collector)
+          collector << "LIMIT "
+          collector = visit o.expr, collector
+        end
+
+        def visit_Arel_Nodes_Offset(o, collector)
+          collector << "OFFSET "
+          visit o.expr, collector
+        end
+
+    end
+      
   end
 end

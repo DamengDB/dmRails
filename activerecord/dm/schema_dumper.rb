@@ -59,5 +59,12 @@ module ActiveRecord
           end
       end
     end
+
+    module DmMySQL
+      module ColumnDumper
+        include Dm::ColumnDumper
+      end
+    end
+    
   end
 end

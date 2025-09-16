@@ -165,5 +165,11 @@ module ActiveRecord
           end
       end
     end
+
+    module DmMySQL
+      module SchemaStatements
+        include Dm::SchemaStatements
+      end
+    end
   end
 end

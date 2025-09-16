@@ -15,5 +15,10 @@ module ActiveRecord
         end
       end
     end
+
+    module DmMySQL
+      class Column < Dm::Column
+      end
+    end
   end
 end
