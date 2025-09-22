@@ -60,6 +60,14 @@ module ActiveRecord
         def unsigned_decimal(*args, **options)
           args.each { |name| column(name, :unsigned_decimal, options) }
         end
+
+        def timestamptz(*args, **options)
+          args.each { |name| column(name, :timestamptz, options) }
+        end
+
+        def timestampltz(*args, **options)
+          args.each { |name| column(name, :timestampltz, options) }
+        end
       end
 
       class TableDefinition < ActiveRecord::ConnectionAdapters::TableDefinition
@@ -95,9 +103,18 @@ module ActiveRecord
     module DmMySQL
       module ColumnMethods
         include Dm::ColumnMethods
+
+        def timestamptz(*args, **options)
+          raise NoMethodError, "undefined Type `timestamptz' for #{self}"
+        end
+
+        def timestampltz(*args, **options)
+          raise NoMethodError, "undefined Type `timestamptz' for #{self}"
+        end
       end
 
       class TableDefinition < Dm::TableDefinition
+        include DmMySQL::ColumnMethods
       end
 
       class Table < Dm::Table

@@ -79,6 +79,8 @@ module ActiveRecord
         decimal:     { name: "decimal" },
         datetime:    { name: "datetime" },
         timestamp:   { name: "timestamp" },
+        timestamptz: { name: "timestamp with time zone" },
+        timestampltz: { name: "timestamp with local time zone" },
         time:        { name: "time" },
         date:        { name: "date" },
         blob:        { name: "blob" },
@@ -620,6 +622,8 @@ module ActiveRecord
       private
         def initialize_type_map(m)
           super
+          register_class_with_precision m, %r(WITH TIME ZONE)i,       TimestampTz
+          register_class_with_precision m, %r(WITH LOCAL TIME ZONE)i, TimestampLtz
           register_class_with_limit m, "varchar", Type::String
           m.alias_type "char", "varchar"
           register_class_with_limit m, "decimal", Type::Decimal
@@ -659,6 +663,33 @@ module ActiveRecord
           class DmJsonb < Type::Json # :nodoc:
           end
         end
+
+        class TimestampTz < ActiveRecord::Type::DateTime
+          def type
+            :timestamptz
+          end
+
+          class Data < DelegateClass(::Time) # :nodoc:
+          end
+
+          def serialize(value)
+            case value = super
+            when ::Time
+              Data.new(value)
+            else
+              value
+            end
+          end
+        end
+
+      class TimestampLtz < TimestampTz
+
+        def type
+          :timestampltz
+        end
+
+      end
+
         ActiveRecord::Type.register(:json, DmJson, adapter: :dm)
         ActiveRecord::Type.register(:jsonb, DmJsonb, adapter: :dm)
     end
