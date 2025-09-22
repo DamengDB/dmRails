@@ -32,6 +32,13 @@ module ActiveRecord
 
     module DmMySQL
       class TypeMetadata < Dm::TypeMetadata
+
+        def ==(other)
+          other.is_a?(DmMySQL::TypeMetadata) &&
+            attributes_for_hash == other.attributes_for_hash
+        end
+        alias eql? ==
+
       end
     end
   end

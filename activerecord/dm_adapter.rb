@@ -685,7 +685,11 @@ module ActiveRecord
         result  = exec_query(sql, "EXPLAIN", binds)
         elapsed = Concurrent.monotonic_time - start
 
-        Dm::ExplainPrettyPrinter.new.pp(result, elapsed)
+        DmMySQL::ExplainPrettyPrinter.new.pp(result, elapsed)
+      end
+
+      def schema_creation # :nodoc:
+        DmMySQL::SchemaCreation.new self
       end
 
       def change_table_comment(table_name, comment_or_changes)
@@ -702,6 +706,18 @@ module ActiveRecord
       def change_column(table_name, column_name, type, **options) # :nodoc:
         execute("ALTER TABLE #{quote_table_name(table_name)} #{change_column_for_alter(table_name, column_name, type, **options)}")
       end
+
+      private
+        version = Rails.version
+        if version < "6.0"
+          def create_table_definition(*args) # :nodoc:
+            DmMySQL::TableDefinition.new(*args)
+          end
+        else
+          def create_table_definition(*args, **options)
+            DmMySQL::TableDefinition.new(self, *args, **options)
+          end
+        end
 
     end
   end

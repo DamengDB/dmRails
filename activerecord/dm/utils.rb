@@ -58,6 +58,16 @@ module ActiveRecord
 
       module Utils
         include Dm::Utils
+
+        def extract_schema_qualified_name(string)
+          schema, table = string.scan(/[^".\s]+|"[^"]*"/)
+          if table.nil?
+            table = schema
+            schema = 'CURRENT_USER'
+          end
+          DmMySQL::Name.new(schema, table)
+        end
+
       end
     end
   end
