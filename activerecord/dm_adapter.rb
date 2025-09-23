@@ -240,9 +240,7 @@ module ActiveRecord
         execute "ALTER INDEX #{quote_table_name(schema) + '.' if schema}#{quote_column_name(old_name)} RENAME TO #{quote_table_name(new_name)}"
       end
 
-      def remove_index(table_name, column_name = nil, **options)
-        return if options[:if_exists] && !index_exists?(table_name, column_name, **options)
-
+      def remove_index(table_name, options={})
         index_name = index_name_for_remove(table_name, options)
         execute "DROP INDEX #{quote_column_name(index_name)}"
       end
@@ -736,6 +734,13 @@ module ActiveRecord
 
       def change_column(table_name, column_name, type, **options) # :nodoc:
         execute("ALTER TABLE #{quote_table_name(table_name)} #{change_column_for_alter(table_name, column_name, type, **options)}")
+      end
+
+      def remove_index(table_name, options={})
+        index_name = index_name_for_remove(table_name, options)
+        len = table_name.size + 1
+        index_name = index_name[len..-1]
+        execute "DROP INDEX #{quote_column_name(index_name)} ON #{quote_table_name(table_name)}"
       end
 
       private
