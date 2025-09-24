@@ -55,6 +55,15 @@ module ActiveRecord
           end
         end
 
+        READ_QUERY = ActiveRecord::ConnectionAdapters::AbstractAdapter.build_read_query_regexp(
+          :desc, :describe, :set, :show, :use
+        ) # :nodoc:
+        private_constant :READ_QUERY
+
+        def write_query?(sql) # :nodoc:
+          !READ_QUERY.match?(sql)
+        end
+
         def begin_db_transaction
           execute "START TRANSACTION"
         end
