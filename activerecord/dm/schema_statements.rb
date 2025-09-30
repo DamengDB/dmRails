@@ -91,6 +91,22 @@ module ActiveRecord
           end
         end
 
+        def type_to_sql(type, limit: nil, precision: nil, scale: nil, **) # :nodoc:
+
+          type_str = type.to_s
+          if ["timetz", "timestamptz", "timestampltz"].include?(type_str)
+            if type_str == "timetz"
+              return precision.nil? ? "time with time zone":"time(#{precision.to_i}) with time zone"
+            elsif type_str == "timestamptz"
+              return precision.nil? ? "timestamp with time zone":"timestamp(#{precision.to_i}) with time zone"
+            elsif type_str == "timestampltz"
+              return precision.nil? ? "timestamp with time zone":"timestamp(#{precision.to_i}) with local time zone"
+            end
+          end
+
+          super
+        end
+
         private
           def data_source_sql(name = nil, type: nil)
             scope = quoted_scope(name, type: type)

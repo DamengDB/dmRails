@@ -61,6 +61,10 @@ module ActiveRecord
           args.each { |name| column(name, :unsigned_decimal, options) }
         end
 
+        def timetz(*args, **options)
+          args.each { |name| column(name, :timetz, options) }
+        end
+
         def timestamptz(*args, **options)
           args.each { |name| column(name, :timestamptz, options) }
         end

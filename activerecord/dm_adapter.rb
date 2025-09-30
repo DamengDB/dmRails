@@ -1,16 +1,19 @@
-require "active_record/connection_adapters/abstract_adapter"
-require "active_record/connection_adapters/statement_pool"
+require "active_support/core_ext/string/strip"
+require "active_record/connection_adapters/dm/utils"
 require "active_record/connection_adapters/dm/column"
+require "active_record/connection_adapters/dm/quoting"
+require "active_record/connection_adapters/dm/type/timetz"
+require "active_record/connection_adapters/statement_pool"
+require "active_record/connection_adapters/abstract_adapter"
+require "active_record/connection_adapters/dm/type_metadata"
+require "active_record/connection_adapters/dm/schema_dumper"
+require "active_record/connection_adapters/dm/schema_creation"
+require "active_record/connection_adapters/dm/type/timestamptz"
+require "active_record/connection_adapters/dm/type/timestampltz"
+require "active_record/connection_adapters/dm/schema_statements"
+require "active_record/connection_adapters/dm/schema_definitions"
 require "active_record/connection_adapters/dm/database_statements"
 require "active_record/connection_adapters/dm/explain_pretty_printer"
-require "active_record/connection_adapters/dm/quoting"
-require "active_record/connection_adapters/dm/schema_creation"
-require "active_record/connection_adapters/dm/schema_definitions"
-require "active_record/connection_adapters/dm/schema_dumper"
-require "active_record/connection_adapters/dm/schema_statements"
-require "active_record/connection_adapters/dm/type_metadata"
-require "active_record/connection_adapters/dm/utils"
-require "active_support/core_ext/string/strip"
 
 gem "dmRuby"
 require "dm"
@@ -79,6 +82,7 @@ module ActiveRecord
         decimal:     { name: "decimal" },
         datetime:    { name: "datetime" },
         timestamp:   { name: "timestamp" },
+        timetz:      { name: "time with time zone" },
         timestamptz: { name: "timestamp with time zone" },
         timestampltz: { name: "timestamp with local time zone" },
         time:        { name: "time" },
@@ -90,6 +94,21 @@ module ActiveRecord
         jsonb:       { name: "jsonb" },
         varchar:     { name: "varchar" },
         bigint:      { name: "bigint" },
+      }
+
+      DM_TYPE_DICT = {
+        decimal:      ["decimal", "number", "numeric", "dec"],
+        varchar:      ["varchar", "varchar2", "char", "character", "rowid"],
+        datetime:     ["datetime", "timestamp"],
+        timetz:       ["time with time zone"],
+        timestamptz:  ["timestamp with time zone", "datetime with time zone"],
+        timestampltz: ["timestamp with local time zone"],
+        integer:      ["integer", "int", "pls_integer", "tinyint", "smallint", "byte"],
+        binary:       ["binary", "varbinary", "image", "longvarbinary", "blob", "raw"],
+        float:        ["float", "real"],
+        double:       ["double", "double precision"],
+        boolean:      ["bool", "bit"],
+        text:         ["text", "long", "longvarchar", "clob"],
       }
 
       def initialize(connection, logger, connection_options, config)
@@ -133,6 +152,10 @@ module ActiveRecord
       end
 
       def supports_datetime_with_precision?
+        true
+      end
+
+      def supports_explain?
         true
       end
 
@@ -396,8 +419,8 @@ module ActiveRecord
         SELECT LOWER(cols.column_name) AS "name",
                 CASE LOWER(cols.data_type)  WHEN 'blob' THEN
                 CASE syscol.scale
-                WHEN 16384 THEN 'clob'
-                WHEN 8192 THEN 'clob'
+                WHEN 0x4000 THEN 'jsonb'
+                WHEN 0x2000 THEN 'json'
                 ELSE LOWER(cols.data_type) 
                 END
                 ELSE LOWER(cols.data_type) END AS "sql_type",
@@ -421,25 +444,25 @@ module ActiveRecord
       def foreign_keys(table_name)
         (_owner, desc_table_name) = extract_schema_qualified_name(table_name)
         fk_info = query(<<~SQL.squish, "SCHEMA")
-            SELECT r.table_name as "to_table"
-                  ,rc.column_name as "references_column"
-                  ,cc.column_name as "column_name"
-                  ,c.constraint_name as "name"
-                  ,c.delete_rule as "delete_rule"
-              FROM all_constraints c, all_cons_columns cc,
-                   all_constraints r, all_cons_columns rc
-             WHERE c.owner = SYS_CONTEXT('userenv', 'current_schema')
-               AND c.table_name = '#{desc_table_name}'
-               AND c.constraint_type = 'R'
-               AND cc.owner = c.owner
-               AND cc.constraint_name = c.constraint_name
-               AND r.constraint_name = c.r_constraint_name
-               AND r.owner = c.owner
-               AND rc.owner = r.owner
-               AND rc.constraint_name = r.constraint_name
-               AND rc.position = cc.position
-            ORDER BY name, to_table, column_name, references_column
-          SQL
+          SELECT r.table_name as "to_table"
+                ,rc.column_name as "references_column"
+                ,cc.column_name as "column_name"
+                ,c.constraint_name as "name"
+                ,c.delete_rule as "delete_rule"
+            FROM all_constraints c, all_cons_columns cc,
+                 all_constraints r, all_cons_columns rc
+           WHERE c.owner = SYS_CONTEXT('userenv', 'current_schema')
+             AND c.table_name = '#{desc_table_name}'
+             AND c.constraint_type = 'R'
+             AND cc.owner = c.owner
+             AND cc.constraint_name = c.constraint_name
+             AND r.constraint_name = c.r_constraint_name
+             AND r.owner = c.owner
+             AND rc.owner = r.owner
+             AND rc.constraint_name = r.constraint_name
+             AND rc.position = cc.position
+          ORDER BY name, to_table, column_name, references_column
+        SQL
 
         fk_info.map do |row|
           options = {
@@ -507,25 +530,83 @@ module ActiveRecord
       end
 
       def new_column_from_field(table_name, field)
-        limit, scale = field["limit"], field["scale"]
-        type_metadata = fetch_type_metadata(field["sql_type"])
-        if limit || scale
-          if field["sql_type"] == 'decimal' || field["sql_type"] == 'number' || field["sql_type"] == 'numeric' || field["sql_type"] == 'dec'
-            field["sql_type"] += "(#{(limit || 38).to_i}, #{(scale || 0).to_i})"
-
-          elsif scale == 0
-              if field["sql_type"] == 'varchar' || field["sql_type"] == 'varchar2' || field["sql_type"] == 'char'
-                field["sql_type"] += "(#{(limit || 256).to_i})"
-              end
-          else
-            if field["sql_type"] == 'datetime'|| field["sql_type"] == 'time' || field["sql_type"] == 'timestamp' || field["sql_type"] == 'datetime with time zone' || field["sql_type"] == 'timestamp'
-              field["sql_type"] += "(#{(scale || 6).to_i})"
+        precision, limit, scale, sql_type = field["precision"], field["limit"], field["scale"], ''
+        if DM_TYPE_DICT[:decimal].include?(field["sql_type"])
+          if scale == 0
+            if precision == nil
+              field["sql_type"] = "decimal"
+            else
+              field["sql_type"] = "decimal(#{(limit || 38).to_i})"
             end
+          else
+            field["sql_type"] = "decimal(#{(limit || 38).to_i}, #{(scale || 0).to_i})"
           end
+          sql_type = "decimal"
+        elsif DM_TYPE_DICT[:varchar].include?(field["sql_type"])
+            field["sql_type"] = "varchar(#{(limit || 256).to_i})"
+            field["scale"] = nil
+            sql_type = "varchar"
+        elsif DM_TYPE_DICT[:binary].include?(field["sql_type"])
+          field["sql_type"] = "binary(#{(limit || 8188).to_i})"
+          field["scale"] = nil
+          sql_type = "binary"
+        elsif DM_TYPE_DICT[:datetime].include?(field["sql_type"])
+          field["sql_type"] = "datetime(#{(scale || 6).to_i})"
+          field["limit"] = nil
+          sql_type = "datetime"
+        elsif DM_TYPE_DICT[:timetz].include?(field["sql_type"])
+          field["sql_type"] = "time(#{(scale || 6).to_i}) with time zone"
+          field["limit"] = nil
+          sql_type = 'time with time zone'
+        elsif DM_TYPE_DICT[:timestamptz].include?(field["sql_type"])
+          field["sql_type"] = "datetime(#{(scale || 6).to_i}) with time zone"
+          field["limit"] = nil
+          sql_type = "datetime with time zone"
+        elsif DM_TYPE_DICT[:timestampltz].include?(field["sql_type"])
+          field["sql_type"] = "datetime(#{(scale || 6).to_i}) with time zone"
+          field["limit"] = nil
+          sql_type = "datetime with local time zone"
+        elsif DM_TYPE_DICT[:double].include?(field["sql_type"])
+          field["sql_type"] = "double(#{(scale || 6).to_i})"
+          sql_type = "double"
         end
 
-        if field["sql_type_owner"] == 'dec' || field["sql_type_owner"] == 'dec'
-          field["sql_type"] = field["sql_type_owner"] + "." + field["sql_type"]
+        re_define_flag = false
+        if DM_TYPE_DICT[:integer].include?(field["sql_type"])
+          sql_type = field["sql_type"] = "integer"
+          re_define_flag = true
+        elsif DM_TYPE_DICT[:binary].include?(field["sql_type"])
+          sql_type = field["sql_type"] = "binary"
+          re_define_flag = true
+        elsif DM_TYPE_DICT[:float].include?(field["sql_type"])
+          sql_type = field["sql_type"] = "float"
+          re_define_flag = true
+        elsif DM_TYPE_DICT[:boolean].include?(field["sql_type"])
+          sql_type = field["sql_type"] = "boolean"
+          re_define_flag = true
+        elsif DM_TYPE_DICT[:text].include?(field["sql_type"])
+          sql_type = field["sql_type"] = "text"
+          re_define_flag = true
+        end
+
+        if re_define_flag
+          field["limit"] = nil
+          field["scale"] = nil
+        end
+
+        if sql_type == ''
+          sql_type = field["sql_type"]
+        end
+
+        if sql_type == 'json' or sql_type == 'jsonb'
+          field["sacle"] = 0
+        elsif sql_type == 'datetime with local time zone'
+          mask = (1 << 3) - 1
+          field["scale"] = field["scale"] & mask
+        end
+
+        if field["sql_type_owner"] != nil
+          field["sql_typesql_type"] = field["sql_type_owner"] + "." + field["sql_type"]
         end
 
         is_virtual = field["virtual_column"] == "YES"
@@ -538,6 +619,7 @@ module ActiveRecord
           field["data_default"] = false if field["data_default"] == "N"
         end
 
+        type_metadata = fetch_type_metadata(sql_type)
         default_value = extract_value_from_default(field["data_default"])
         type_metadata.instance_variable_set("@sql_type", field["sql_type"])
         type_metadata.instance_variable_set("@precision", field["precision"])
@@ -620,11 +702,11 @@ module ActiveRecord
       private
         def initialize_type_map(m)
           super
-          register_class_with_precision m, %r(WITH TIME ZONE)i,       TimestampTz
-          register_class_with_precision m, %r(WITH LOCAL TIME ZONE)i, TimestampLtz
-          register_class_with_limit m, "varchar", Type::String
-          m.alias_type "char", "varchar"
-          register_class_with_limit m, "decimal", Type::Decimal
+          register_class_with_precision m, "time", Type::Time
+          register_class_with_limit m, "datetime", Type::DateTime
+          m.register_type "decimal",       Type::Decimal.new
+          m.register_type "varchar",       Type::String.new
+          m.register_type "binary",        Type::Binary.new
           m.register_type "tinytext",      Type::Text.new(limit: 2**8 - 1)
           m.register_type "tinyblob",      Type::Binary.new(limit: 2**8 - 1)
           m.register_type "text",          Type::Text.new(limit: 2**16 - 1)
@@ -633,9 +715,14 @@ module ActiveRecord
           m.register_type "double",        Type::Float.new(limit: 53)
           m.register_type "bigint",        Type::BigInteger.new
           m.register_type "integer",       Type::Integer.new
-          m.register_type "int",           Type::Integer.new
-          m.register_type "json",          DmJson.new
-          m.register_type "jsonb",         DmJsonb.new
+          m.register_type "bit",           Type::Boolean.new
+          m.register_type "boolean",       Type::Boolean.new
+          m.register_type "date",          Type::Date.new
+          m.register_type "json",          Type::Json.new
+          m.register_type "jsonb",         Type::Json.new
+          m.register_type "time with time zone", Type::Dm::TimeTz.new
+          m.register_type "datetime with time zone", Type::Dm::TimestampTz.new
+          m.register_type "datetime with local time zone", Type::Dm::TimestampLtz.new
         end
 
         version = Rails.version
@@ -654,42 +741,8 @@ module ActiveRecord
           def create_table_definition(*args, **options)
             Dm::TableDefinition.new(self, *args, **options)
           end
-  
-          class DmJson < Type::Json # :nodoc:
-          end
-  
-          class DmJsonb < Type::Json # :nodoc:
-          end
+
         end
-
-        class TimestampTz < ActiveRecord::Type::DateTime
-          def type
-            :timestamptz
-          end
-
-          class Data < DelegateClass(::Time) # :nodoc:
-          end
-
-          def serialize(value)
-            case value = super
-            when ::Time
-              Data.new(value)
-            else
-              value
-            end
-          end
-        end
-
-      class TimestampLtz < TimestampTz
-
-        def type
-          :timestampltz
-        end
-
-      end
-
-        ActiveRecord::Type.register(:json, DmJson, adapter: :dm)
-        ActiveRecord::Type.register(:jsonb, DmJsonb, adapter: :dm)
     end
 
     class DmMySQLAdapter < DmAdapter
@@ -715,6 +768,10 @@ module ActiveRecord
         elapsed = Concurrent.monotonic_time - start
 
         DmMySQL::ExplainPrettyPrinter.new.pp(result, elapsed)
+      end
+
+      def supports_explain?
+        false
       end
 
       def schema_creation # :nodoc:

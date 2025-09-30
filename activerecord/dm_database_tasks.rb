@@ -70,10 +70,6 @@ module ActiveRecord
         run_cmd("psql", args, "loading")
       end
     end
-    
-    class DmMySQLDatabaseTasks < DmDatabaseTasks
-    end
-    
   end
 end
 

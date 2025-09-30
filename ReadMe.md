@@ -24,6 +24,7 @@
 			register_task(/sqlite/,       ActiveRecord::Tasks::SQLiteDatabaseTasks)
 	在此部分代码下添加一行 register_task(/dm/,           ActiveRecord::Tasks::DmDatabaseTasks)
 	
+
 	如果为6.0版本找到
 			register_task(/mysql/,        "ActiveRecord::Tasks::MySQLDatabaseTasks")
 			register_task(/postgresql/,   "ActiveRecord::Tasks::PostgreSQLDatabaseTasks")
@@ -39,3 +40,18 @@
 
   7、如果使用了ruby的migration_comments库，测试中使用版本为0.4.1版本，请将migration_comments目录下的 dm_adapter.rb文件 复制至migration_comments-0.4.1/lib/migration_comments/active_record/connection_adapters目录下，
         同时修改migration_comments-0.4.1/lib目录下的migration_comments.rb文件，在self.setup中找到adapters = %w(PostgreSQL Mysql2 SQLite)，将其改为adapters = %w(PostgreSQL Mysql2 SQLite Dm)即可
+
+8、如果期望使用ruby on rails中的rails dbconsole功能，则需要在railties库中railties/lib/rails/commands/dbconsole目录下的dbconsole_command.rb文件中，Rails::DBConsole类所属start函数中添加以下代码至case判断中，同时需要当前系统中存在disql，将disql所在目录增加至PATH环境变量中
+
+```ruby
+  when "dm"
+    logon = ""
+
+    if config["username"]
+      logon = config["username"].dup
+      logon << "/#{config['password']}" if config["password"] && @options["include_password"]
+      logon << "@#{config['server']}" if config["server"]
+    end
+
+    find_cmd_and_exec("disql", logon)
+```
