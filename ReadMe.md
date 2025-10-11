@@ -17,21 +17,41 @@
 
   2、将activerecord目录下的 dm_database_tasks.rb文件 复制至 activerecord-*.*.*.*/lib/active_record/tasks目录 下
 
-  3、修改 activerecord-*.*.*.*/lib/active_record/tasks目录 下的代码：
-	如果为5.1版本找到
-			register_task(/mysql/,        ActiveRecord::Tasks::MySQLDatabaseTasks)
-			register_task(/postgresql/,   ActiveRecord::Tasks::PostgreSQLDatabaseTasks)
-			register_task(/sqlite/,       ActiveRecord::Tasks::SQLiteDatabaseTasks)
-	在此部分代码下添加一行 register_task(/dm/,           ActiveRecord::Tasks::DmDatabaseTasks)
-	
+  3、修改关于迁移task部分代码：
 
-	如果为6.0版本找到
-			register_task(/mysql/,        "ActiveRecord::Tasks::MySQLDatabaseTasks")
-			register_task(/postgresql/,   "ActiveRecord::Tasks::PostgreSQLDatabaseTasks")
-			register_task(/sqlite/,       "ActiveRecord::Tasks::SQLiteDatabaseTasks")
-	在此部分代码下添加一行 register_task(/dm/,           "ActiveRecord::Tasks::DmDatabaseTasks")
-	格式保持一致即可
+​	1）activerecord-*.*.*.*/lib/active_record/tasks/database_tasks.rb文件
 
+​	如果为5.1版本找到
+​			register_task(/mysql/,        ActiveRecord::Tasks::MySQLDatabaseTasks)
+​			register_task(/postgresql/,   ActiveRecord::Tasks::PostgreSQLDatabaseTasks)
+​			register_task(/sqlite/,       ActiveRecord::Tasks::SQLiteDatabaseTasks)
+​	在此部分代码下添加一行 register_task(/dm/,           ActiveRecord::Tasks::DmDatabaseTasks)
+​	
+
+```ruby
+如果为6.0版本找到
+		register_task(/mysql/,        "ActiveRecord::Tasks::MySQLDatabaseTasks")
+		register_task(/postgresql/,   "ActiveRecord::Tasks::PostgreSQLDatabaseTasks")
+		register_task(/sqlite/,       "ActiveRecord::Tasks::SQLiteDatabaseTasks")
+在此部分代码下添加一行 register_task(/dm/,           "ActiveRecord::Tasks::DmDatabaseTasks")
+格式保持一致即可
+```
+
+​	2）activerecord-*.*.*.*/lib/active_record.rb文件
+
+```ruby
+如果为6.0版本找到
+  module Tasks
+    extend ActiveSupport::Autoload
+
+    autoload :DatabaseTasks
+    autoload :SQLiteDatabaseTasks, "active_record/tasks/sqlite_database_tasks"
+    autoload :MySQLDatabaseTasks,  "active_record/tasks/mysql_database_tasks"
+    autoload :PostgreSQLDatabaseTasks,
+      "active_record/tasks/postgresql_database_tasks"
+  end
+在此module定义中添加    autoload :DmDatabaseTasks,  "active_record/tasks/dm_database_tasks" 格式保持一致即可
+```
   4、将activerecord/arel目录下的dm.rb文件复制至 activerecord-*.*.*.*/lib/arel/visitors目录下
 
   5、修改 activerecord-*.*.*.*/lib/arel目录下的visitors.rb文件： 添加 require "arel/visitors/dm" 至文件中

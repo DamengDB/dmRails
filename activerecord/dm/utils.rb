@@ -45,7 +45,7 @@ module ActiveRecord
           schema, table = string.scan(/[^".\s]+|"[^"]*"/)
           if table.nil?
             table = schema
-            schema = 'CURRENT_USER'
+            schema = "SYS_CONTEXT('userenv', 'current_schema')"
           end
           Dm::Name.new(schema, table)
         end
@@ -63,7 +63,7 @@ module ActiveRecord
           schema, table = string.scan(/[^".\s]+|"[^"]*"/)
           if table.nil?
             table = schema
-            schema = 'CURRENT_USER'
+            schema = "SYS_CONTEXT('userenv', 'current_schema')"
           end
           DmMySQL::Name.new(schema, table)
         end

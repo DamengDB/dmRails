@@ -99,8 +99,8 @@ module MigrationComments::ActiveRecord::ConnectionAdapters
 
   module DmMySQLAdapter < DmAdapter
     def quote_table_name(name)
-      quote_sign = '"'
-      dquote_sign = '""'
+      quote_sign = '`'
+      dquote_sign = '``'
       name.gsub(quote_sign, dquote_sign) if name.include?(quote_sign)
       name = quote_sign + "#{name}" + quote_sign
       name

@@ -10,9 +10,9 @@ module ActiveRecord
           end
           schema, tabname = extract_schema_qualified_name(table_name)
           if (schema == nil)
-            schema = 'CURRENT_USER'
+            schema = "SYS_CONTEXT('userenv', 'current_schema')"
           else
-            schema = "\'#{scheam}\'"
+            schema = "'#{schema}'"
           end
           result = query(<<-SQL, "SCHEMA")
             SELECT i.table_name AS "table_name", c.descend AS "order", i.index_name AS "index_name", i.uniqueness AS "uniqueness",
@@ -25,70 +25,55 @@ module ActiveRecord
                 c.column_name = atc.column_name AND i.owner = atc.owner AND atc.hidden_column = 'NO'
             WHERE i.owner = SYS_CONTEXT('userenv', 'current_schema')
                AND i.table_owner = SYS_CONTEXT('userenv', 'current_schema')
-               AND i.table_name = \'#{tabname}\'
+               AND i.table_name = '#{tabname}'
                AND i.owner = #{schema}
+               AND i.index_type != 'VIRTUAL'
                AND NOT EXISTS (SELECT uc.index_name FROM all_constraints uc
                 WHERE uc.index_name = i.index_name AND uc.owner = i.owner)
             ORDER BY i.index_name, c.column_position
           SQL
 
           version = Rails.version
-          
-          if version < "6.0"
-            result.map do |row|
-              table_name = row["table_name"]
-              index_name = row["index_name"]
-              unique = row["uniqueness"]
-              index_type = row["index_type"]
-              order = row["order"]
-              if index_type == 'NORMAL'
-                using_type = 'BTREE'
+
+          id = 0
+          pk_arr = []
+          order_dict = {}
+          reflect_dict = {}
+          result.map do |row|
+            if reflect_dict.include?(row['index_name'])
+              sort_id = reflect_dict[row['index_name']]
+              pk_temp = pk_arr[sort_id]
+              if pk_temp['column_name'].is_a?(String)
+                new_array = [pk_temp['column_name'], row['column_name']]
+
+                pk_arr[sort_id]['column_name'] = new_array
               else
-                using_type = index_type
+                pk_arr[sort_id]['column_name'].push(row['column_name'])
               end
-              IndexDefinition.new(table_name, index_name, unique == 'UNIQUE', [], {}, nil, nil, index_type, using_type, nil)
-            end.compact
-          else
-            id = 0
-            pk_arr = []
-            order_dict = {}
-            reflect_dict = {}
-            result.map do |row|
-              if reflect_dict.include?(row['index_name'])
-                sort_id = reflect_dict[row['index_name']]
-                pk_temp = pk_arr[sort_id]
-                if pk_temp['column_name'].is_a?(String)
-                  new_array = [pk_temp['column_name'], row['column_name']]
 
-                  pk_arr[sort_id]['column_name'] = new_array
-                else
-                  pk_arr[sort_id]['column_name'].push(row['column_name'])
-                end
+              pk_arr[sort_id]['order'][row['column_name']] = row['order']
 
-                pk_arr[sort_id]['order'][row['column_name']] = row['order']
-
-              else
-                pk_arr.push(row)
-                pk_arr[0]['order'] = {pk_arr[0]['column_name'] => row['order']}
-                reflect_dict.store(row['index_name'], id)
-                id += 1
-              end
+            else
+              pk_arr.push(row)
+              pk_arr[0]['order'] = {pk_arr[0]['column_name'] => row['order']}
+              reflect_dict.store(row['index_name'], id)
+              id += 1
             end
-            pk_arr.map do |row|
-              table_name = row["table_name"]
-              index_name = row["index_name"]
-              unique = row["uniqueness"]
-              index_type = row["index_type"]
-              columns = row['column_name']
-              orders = row['order']
-              if index_type == 'NORMAL'
-                using_type = 'BTREE'
-              else
-                using_type = index_type
-              end
-              IndexDefinition.new(table_name, index_name, unique == 'UNIQUE', columns, orders: orders, type: index_type, using: using_type)
-            end.compact
           end
+          pk_arr.map do |row|
+            table_name = row["table_name"]
+            index_name = row["index_name"]
+            unique = row["uniqueness"]
+            index_type = row["index_type"]
+            columns = row['column_name']
+            orders = row['order']
+            if index_type == 'NORMAL'
+              using_type = 'BTREE'
+            else
+              using_type = index_type
+            end
+            IndexDefinition.new(table_name, index_name, unique == 'UNIQUE', columns, orders: orders, type: index_type, using: using_type)
+          end.compact
         end
 
         def type_to_sql(type, limit: nil, precision: nil, scale: nil, **) # :nodoc:
@@ -103,8 +88,56 @@ module ActiveRecord
               return precision.nil? ? "timestamp with time zone":"timestamp(#{precision.to_i}) with local time zone"
             end
           end
-
           super
+        end
+
+        def quote_version_column(column_name)
+          if @config[:parse_type] == "mysql"
+            quote_sign = '`'
+          else
+            quote_sign = '"'
+          end
+          result = quote_sign + column_name + quote_sign
+          result
+        end
+
+        def insert_versions_sql(versions)
+          sm_table = quote_table_name(schema_migration.table_name)
+
+          if versions.is_a?(Array)
+            sql = +"INSERT INTO #{sm_table} (#{quote_version_column("version")}) VALUES\n"
+            sql << versions.map { |v| "(#{quote(v)})" }.join(",\n")
+            sql << ";\n\n"
+            sql
+          else
+            "INSERT INTO #{sm_table} (#{quote_version_column("version")}) VALUES (#{quote(versions)});"
+          end
+        end
+
+        def assume_migrated_upto_version(version, migrations_paths = nil)
+          unless migrations_paths.nil?
+            ActiveSupport::Deprecation.warn(<<~MSG.squish)
+            Passing migrations_paths to #assume_migrated_upto_version is deprecated and will be removed in Rails 6.1.
+          MSG
+          end
+
+          version = version.to_i
+          sm_table = quote_table_name(schema_migration.table_name)
+
+          migrated = migration_context.get_all_versions
+          versions = migration_context.migrations.map(&:version)
+
+          unless migrated.include?(version)
+            execute "INSERT INTO #{sm_table} (#{quote_version_column("version")}) VALUES (#{quote(version)})"
+          end
+
+          inserting = (versions - migrated).select { |v| v < version }
+          if inserting.any?
+            if (duplicate = inserting.detect { |v| inserting.count(v) > 1 })
+              raise "Duplicate migration #{duplicate}. Please renumber your migrations to resolve the conflict."
+            end
+            execute insert_versions_sql(inserting)
+          end
         end
 
         private
@@ -120,23 +153,25 @@ module ActiveRecord
               end
 
               sql = "{data_source_sql}SELECT tab.#{col_name} FROM #{all_name} tab, sysobjects obj"
-              sql << " WHERE obj.name = tab.#{col_name}"
-              sql << " AND tab.owner = #{scope[:schema]}"
-              sql << " AND tab.#{col_name} = #{scope[:name]}" if scope[:name]
-              sql << " AND obj.subtype$ = #{scope[:type]}" if scope[:type]
+              sql << "\nWHERE obj.name = tab.#{col_name}"
+              sql << "\nAND tab.owner = #{scope[:schema]}"
+              sql << "\nAND obj.schid = (SELECT id FROM SYSOBJECTS WHERE NAME = #{scope[:schema]} AND TYPE$='SCH')"
+              sql << "\nAND tab.#{col_name} = #{scope[:name]}" if scope[:name]
+              sql << "\nAND obj.subtype$ = #{scope[:type]}" if scope[:type]
               sql
             else
               sql = "{data_source_sql}SELECT tab.table_name AS \"table_name\" FROM all_tables tab, sysobjects obj  "
-              sql << " WHERE obj.name = tab.table_name"
-              sql << " AND tab.owner = #{scope[:schema]}"
-              sql << " AND tab.table_name = #{scope[:name]}" if scope[:name]
-              sql << " AND obj.subtype$ = #{scope[:type]}" if scope[:type]
-              sql << "\n UNION ALL\n"
-              sql << "SELECT views.VIEW_NAME AS \"table_name\" FROM all_views views, sysobjects obj "
-              sql << " WHERE obj.name = views.view_name"
-              sql << " AND views.owner = #{scope[:schema]}"
-              sql << " AND views.view_name = #{scope[:name]}" if scope[:name]
-              sql << " AND obj.subtype$ = #{scope[:type]}" if scope[:type]
+              sql << "\nWHERE obj.name = tab.table_name"
+              sql << "\nAND tab.owner = #{scope[:schema]}"
+              sql << "\nAND tab.table_name = #{scope[:name]}" if scope[:name]
+              sql << "\nAND obj.subtype$ = #{scope[:type]}" if scope[:type]
+              sql << "\n UNION ALL"
+              sql << "\nSELECT views.VIEW_NAME AS \"table_name\" FROM all_views views, sysobjects obj "
+              sql << "\nWHERE obj.name = views.view_name"
+              sql << "\nAND views.owner = #{scope[:schema]}"
+              sql << "\nAND obj.schid = (SELECT id FROM SYSOBJECTS WHERE NAME = #{scope[:schema]} AND TYPE$='SCH')"
+              sql << "\nAND views.view_name = #{scope[:name]}" if scope[:name]
+              sql << "\nAND obj.subtype$ = #{scope[:type]}" if scope[:type]
               sql
 
             end
@@ -160,7 +195,7 @@ module ActiveRecord
             if schema
               scope[:schema] = quote(schema)
             else
-              scope[:schema] = "CURRENT_USER"
+              scope[:schema] = "SYS_CONTEXT('userenv', 'current_schema')"
             end
             type = \
               case type
@@ -185,6 +220,7 @@ module ActiveRecord
     module DmMySQL
       module SchemaStatements
         include Dm::SchemaStatements
+
       end
     end
   end

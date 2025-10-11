@@ -2,6 +2,7 @@ require "active_support/core_ext/string/strip"
 require "active_record/connection_adapters/dm/utils"
 require "active_record/connection_adapters/dm/column"
 require "active_record/connection_adapters/dm/quoting"
+require "active_record/connection_adapters/dm/type/blob"
 require "active_record/connection_adapters/dm/type/timetz"
 require "active_record/connection_adapters/statement_pool"
 require "active_record/connection_adapters/abstract_adapter"
@@ -29,6 +30,10 @@ module ActiveRecord
       config[:flags] ||= 0
 
       parse_type = 'DM'
+
+      if config[:database] != nil and config[:schema] == nil
+        config[:schema] = config[:database]
+      end
 
       if config.include?(:parse_type)
         if config[:parse_type] != nil and config[:parse_type].is_a?(String)
@@ -99,16 +104,20 @@ module ActiveRecord
       DM_TYPE_DICT = {
         decimal:      ["decimal", "number", "numeric", "dec"],
         varchar:      ["varchar", "varchar2", "char", "character", "rowid"],
+        date:         ["date"],
+        time:         ["time"],
         datetime:     ["datetime", "timestamp"],
         timetz:       ["time with time zone"],
         timestamptz:  ["timestamp with time zone", "datetime with time zone"],
         timestampltz: ["timestamp with local time zone"],
         integer:      ["integer", "int", "pls_integer", "tinyint", "smallint", "byte"],
-        binary:       ["binary", "varbinary", "image", "longvarbinary", "blob", "raw"],
+        binary:       ["binary", "varbinary", "image", "longvarbinary", "raw"],
         float:        ["float", "real"],
         double:       ["double", "double precision"],
         boolean:      ["bool", "bit"],
         text:         ["text", "long", "longvarchar", "clob"],
+        blob:         ["blob"],
+        json:         ["json", "jsonb"]
       }
 
       def initialize(connection, logger, connection_options, config)
@@ -146,7 +155,6 @@ module ActiveRecord
         Arel::Visitors::Dm.new(self)
       end
 
-
       def supports_foreign_keys?
         true
       end
@@ -167,6 +175,7 @@ module ActiveRecord
             host: "--host",
             port: "--port",
             username: "--user",
+            schema: "--schema",
             encoding: 1,
           }.filter_map { |opt, arg| "#{arg}=#{dm_config[opt]}" if dm_config[opt] }
 
@@ -224,7 +233,7 @@ module ActiveRecord
       end
 
       def current_database
-        query_value('SELECT SYS_CONTEXT(\'userenv\', \'current_schema\') FROM DUAL', "SCHEMA")
+        query_value("SELECT SYS_CONTEXT('userenv', 'current_schema') FROM DUAL", "SCHEMA")
       end
 
       def table_comment(table_name) # :nodoc:
@@ -384,8 +393,20 @@ module ActiveRecord
       end
 
       def add_index(table_name, column_name, options = {}) #:nodoc:
-        index_name, index_type, index_columns, _, index_algorithm, index_using, comment = add_index_options(table_name, column_name, options)
-        sql = "CREATE #{index_type} INDEX #{quote_column_name(index_name)} #{index_using} ON #{quote_table_name(table_name)} (#{index_columns}) #{index_algorithm}"
+        index_name, index_type, index_columns, uniques, index_algorithm, index_using, comment = add_index_options(table_name, column_name, options)
+        type = nil
+        if index_type == "NORMAL" or index_type == "VIRTUAL"
+          if options[:unique]
+            type = "UNIQUE"
+          else
+            type = nil
+          end
+        elsif index_type == "CLUSTER" and options[:unique]
+          type = "CLUSTER UNIQUE"
+        else
+          type = index_type
+        end
+        sql = "CREATE #{type} INDEX #{quote_column_name(index_name)} ON #{quote_table_name(table_name)} (#{index_columns}) #{index_algorithm}"
         execute add_sql_comment!(sql, comment)
       end
 
@@ -413,7 +434,7 @@ module ActiveRecord
         if (owner != nil)
           owner = "\'#{owner.upcase}\'"
         else
-          owner = 'CURRENT_USER'
+          owner = "SYS_CONTEXT('userenv', 'current_schema')"
         end
         query(<<-SQL, "SCHEMA")
         SELECT LOWER(cols.column_name) AS "name",
@@ -432,10 +453,11 @@ module ActiveRecord
             WHERE cols.table_name = '#{desc_table_name}'
              AND cols.owner      = #{owner}
              AND cols.hidden_column = 'NO'
-             AND cols.owner = comments.owner
+             AND cols.owner = comments.schema_name
              AND cols.table_name = comments.table_name
              AND cols.column_name = comments.column_name
              AND cols.column_name = syscol.name
+             AND sysobj.schid = (SELECT id FROM SYSOBJECTS WHERE NAME = #{owner} AND TYPE$='SCH')
              AND sysobj.name = cols.table_name
              AND syscol.id = sysobj.id
         SQL
@@ -491,23 +513,25 @@ module ActiveRecord
       def primary_keys(table_name) # :nodoc:
         (owner, desc_table_name) = extract_schema_qualified_name(table_name)
         if (owner == nil)
-          owner = 'CURRENT_USER'
+          owner = "SYS_CONTEXT('userenv', 'current_schema')"
         else
-          owner = "\'#{owner}\'"
+          owner = "'#{owner}'"
         end
         result = array_query(<<~SQL.squish, "SCHEMA")
           SELECT cc.column_name
             FROM all_constraints c, all_cons_columns cc
-           WHERE c.owner = SYS_CONTEXT('userenv', 'current_schema')
+           WHERE c.owner = #{owner}
              AND c.table_name = \'#{desc_table_name}\'
-             AND c.owner = #{owner}
              AND c.constraint_type = 'P'
              AND cc.owner = c.owner
              AND cc.constraint_name = c.constraint_name
              order by cc.position
         SQL
-        return result.first if result.length == 1
-        return result
+        if result.length == 1
+          return result.first
+        else
+          return result.flatten
+        end
       end
 
       def columns_for_distinct(columns, orders) # :nodoc:
@@ -566,6 +590,12 @@ module ActiveRecord
           field["sql_type"] = "datetime(#{(scale || 6).to_i}) with time zone"
           field["limit"] = nil
           sql_type = "datetime with local time zone"
+          mask = (1 << 3) - 1
+          field["scale"] = field["scale"] & mask
+        elsif DM_TYPE_DICT[:time].include?(field["sql_type"])
+          field["sql_type"] = "time(#{(scale || 6).to_i}) with time zone"
+          field["limit"] = nil
+          sql_type = "time"
         elsif DM_TYPE_DICT[:double].include?(field["sql_type"])
           field["sql_type"] = "double(#{(scale || 6).to_i})"
           sql_type = "double"
@@ -587,6 +617,15 @@ module ActiveRecord
         elsif DM_TYPE_DICT[:text].include?(field["sql_type"])
           sql_type = field["sql_type"] = "text"
           re_define_flag = true
+        elsif DM_TYPE_DICT[:blob].include?(field["sql_type"])
+          sql_type = field["sql_type"] = "blob"
+          re_define_flag = true
+        elsif DM_TYPE_DICT[:date].include?(field["sql_type"])
+          field["sql_type"] = "date"
+          re_define_flag = true
+        elsif DM_TYPE_DICT[:json].include?(field["sql_type"])
+          field["sql_type"] = sql_type = field["sql_type"]
+          re_define_flag = true
         end
 
         if re_define_flag
@@ -596,13 +635,6 @@ module ActiveRecord
 
         if sql_type == ''
           sql_type = field["sql_type"]
-        end
-
-        if sql_type == 'json' or sql_type == 'jsonb'
-          field["sacle"] = 0
-        elsif sql_type == 'datetime with local time zone'
-          mask = (1 << 3) - 1
-          field["scale"] = field["scale"] & mask
         end
 
         if field["sql_type_owner"] != nil
@@ -710,7 +742,6 @@ module ActiveRecord
           m.register_type "tinytext",      Type::Text.new(limit: 2**8 - 1)
           m.register_type "tinyblob",      Type::Binary.new(limit: 2**8 - 1)
           m.register_type "text",          Type::Text.new(limit: 2**16 - 1)
-          m.register_type "blob",          Type::Binary.new(limit: 2**16 - 1)
           m.register_type "float",         Type::Float.new(limit: 24)
           m.register_type "double",        Type::Float.new(limit: 53)
           m.register_type "bigint",        Type::BigInteger.new
@@ -720,6 +751,8 @@ module ActiveRecord
           m.register_type "date",          Type::Date.new
           m.register_type "json",          Type::Json.new
           m.register_type "jsonb",         Type::Json.new
+          m.register_type "time",          Type::Time.new
+          m.register_type "blob",          Type::Dm::Blob.new
           m.register_type "time with time zone", Type::Dm::TimeTz.new
           m.register_type "datetime with time zone", Type::Dm::TimestampTz.new
           m.register_type "datetime with local time zone", Type::Dm::TimestampLtz.new

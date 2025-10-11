@@ -2,6 +2,19 @@ module ActiveRecord
   module Tasks
     class DmDatabaseTasks
 
+      def quote_table_name(name)
+        if @config["parse_type"] == "mysql"
+          quote_sign = '`'
+          dquote_sign = '``'
+        else
+          quote_sign = '"'
+          dquote_sign = '""'
+        end
+        name.gsub(quote_sign, dquote_sign) if name.include?(quote_sign)
+        name = quote_sign + "#{name}" + quote_sign
+        name
+      end
+
       def prepare_command_options
         args = {
           "server"    => "--server",
@@ -13,27 +26,38 @@ module ActiveRecord
 
       delegate :connection, :establish_connection, to: ActiveRecord::Base
 
-      def initialize(configuration)
-        @configuration = configuration
+      def initialize(config)
+        @config = config
+      end
+
+      def get_schema_name()
+        if @config["schema"] != nil or @config["database"] != nil
+          if @config["schema"] != nil
+            schema_name = @config["schema"]
+          else
+            schema_name = @config["database"]
+          end
+        else
+          raise "At least one schema or database needs to be specified"
+        end
+        schema_name
       end
 
       def create
-        system_password = ENV.fetch("PASSWORD") {
-          print "Please provide the SYSTEM password for your Dm installation\n>"
-          $stdin.gets.strip
-        }
-        establish_connection(@config.merge(username: "SYSDBA", password: system_password))
-        connection.execute "CREATE USER #{@config[:username]} IDENTIFIED BY #{@config[:password]}"
+        schema_name = get_schema_name()
+        establish_connection @config.merge("database" => nil, "schema" => nil)
+        connection.execute "CREATE SCHEMA #{quote_table_name(schema_name)}"
       end
 
       def drop
-        establish_connection(@config)
-        connection.drop_database configuration["database"]
+        schema_name = get_schema_name()
+        establish_connection(@config.merge("database" => nil, "schema" => nil))
+        connection.execute "DROP SCHEMA #{quote_table_name(schema_name)} CASCADE"
       end
 
       def purge
         drop
-        connection.execute("PURGE RECYCLEBIN") rescue nil
+        create
       end
 
       def structure_dump(filename, extra_flags)
