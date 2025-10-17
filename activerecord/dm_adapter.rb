@@ -437,7 +437,7 @@ module ActiveRecord
           owner = "SYS_CONTEXT('userenv', 'current_schema')"
         end
         query(<<-SQL, "SCHEMA")
-        SELECT LOWER(cols.column_name) AS "name",
+        SELECT cols.column_name AS "name",
                 CASE LOWER(cols.data_type)  WHEN 'blob' THEN
                 CASE syscol.scale
                 WHEN 0x4000 THEN 'jsonb'
@@ -715,6 +715,10 @@ module ActiveRecord
       end
 
       def supports_insert_on_duplicate_update?
+        true
+      end
+
+      def supports_views?
         true
       end
 
