@@ -445,7 +445,7 @@ module ActiveRecord
                 ELSE LOWER(cols.data_type) 
                 END
                 ELSE LOWER(cols.data_type) END AS "sql_type",
-                 LOWER(cols.data_default) as "data_default", LOWER(cols.nullable) as "nullable",
+                 cols.data_default as "data_default", LOWER(cols.nullable) as "nullable",
                  cols.data_type_owner AS "sql_type_owner", cols.DATA_PRECISION AS "precision",
                  syscol.LENGTH$ AS "limit", syscol.scale AS "scale",
                  comments.comments AS "column_comment"
@@ -649,6 +649,9 @@ module ActiveRecord
           field["data_default"].sub!(/^'(.*)'$/m, '\1')
           field["data_default"] = nil if /^(null|empty_[bc]lob\(\))$/i.match?(field["data_default"])
           field["data_default"] = false if field["data_default"] == "N"
+          if ["float", "integer", "decimal", "double"].include?(sql_type)
+            field["data_default"] = field["data_default"].to_f
+          end
         end
 
         type_metadata = fetch_type_metadata(sql_type)
