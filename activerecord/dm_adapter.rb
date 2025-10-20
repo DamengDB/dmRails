@@ -835,9 +835,15 @@ module ActiveRecord
 
       def remove_index(table_name, options={})
         index_name = index_name_for_remove(table_name, options)
-        len = table_name.size + 1
-        index_name = index_name[len..-1]
-        execute "DROP INDEX #{quote_column_name(index_name)} ON #{quote_table_name(table_name)}"
+        schema, tabname = extract_schema_qualified_name(table_name)
+        prefix_str = tabname + "$"
+        if index_name.start_with?(prefix_str)
+          len = table_name.size + 1
+          index_name = index_name[len..-1]
+          execute "DROP INDEX #{quote_column_name(index_name)} ON #{quote_table_name(table_name)}"
+        else
+          raise "Cannot delete indexes not created in MySQL syntax mode"
+        end
       end
 
       private
