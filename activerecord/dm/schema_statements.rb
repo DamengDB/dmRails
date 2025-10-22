@@ -55,8 +55,8 @@ module ActiveRecord
 
             else
               pk_arr.push(row)
-              pk_arr[0]['order'] = {pk_arr[0]['column_name'] => row['order']}
               reflect_dict.store(row['index_name'], id)
+              pk_arr[id]['order'] = {pk_arr[id]['column_name'] => row['order']}
               id += 1
             end
           end
@@ -179,8 +179,8 @@ module ActiveRecord
 
           def add_index_length(quoted_columns, **options)
             lengths = options_for_index_columns(options[:length])
-            quoted_columns.each do |name, column|
-              column << "(#{lengths[name]})" if lengths[name].present?
+            quoted_columns.each do |name, column|0
+              column = "SUBSTR(#{column}, 1, #{lengths[name]})" if lengths[name].present?
             end
           end
 

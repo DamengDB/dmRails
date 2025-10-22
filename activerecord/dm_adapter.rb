@@ -239,9 +239,20 @@ module ActiveRecord
       def table_comment(table_name) # :nodoc:
         scope = quoted_scope(table_name)
 
-        query_value(<<~SQL, "SCHEMA").presence
-          {table_comment}SELECT COMMENTS 
+        array_query(<<~SQL, "SCHEMA").presence
+          SELECT COMMENTS 
           FROM DBA_TAB_COMMENTS
+          WHERE OWNER = #{scope[:schema]}
+          AND TABLE_NAME = #{scope[:name]}
+        SQL
+      end
+
+      def temporary_table?(name)
+        scope = quoted_scope(name)
+
+        array_query(<<~SQL, "SCHEMA").presence
+          SELECT TEMPORARY 
+          FROM ALL_TABLES
           WHERE OWNER = #{scope[:schema]}
           AND TABLE_NAME = #{scope[:name]}
         SQL
@@ -505,9 +516,15 @@ module ActiveRecord
       end
 
       def table_options(table_name) # :nodoc:
+        options_result = {}
         if comment = table_comment(table_name)
-          { comment: comment }
+          options_result[:comment] = comment
         end
+
+        if temporary_table?(table_name)[0][0] == 'Y'
+          options_result[:temporary] = true
+        end
+        options_result
       end
 
       def primary_keys(table_name) # :nodoc:
@@ -781,7 +798,6 @@ module ActiveRecord
           def create_table_definition(*args, **options)
             Dm::TableDefinition.new(self, *args, **options)
           end
-
         end
     end
 

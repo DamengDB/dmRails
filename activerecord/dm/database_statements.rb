@@ -6,9 +6,6 @@ module ActiveRecord
           if sql.start_with?("{data_source_sql}")
             sql = sql[17..-1]
             execute(sql, name).each(as: :array)
-          elsif sql.start_with?("{table_comment}")
-            sql = sql[15..-1]
-            execute(sql, name).each(as: :array)
           else
             execute(sql, name).to_a
           end
