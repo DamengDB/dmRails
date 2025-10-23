@@ -239,12 +239,13 @@ module ActiveRecord
       def table_comment(table_name) # :nodoc:
         scope = quoted_scope(table_name)
 
-        array_query(<<~SQL, "SCHEMA").presence
+        result = array_query(<<~SQL, "SCHEMA").presence
           SELECT COMMENTS 
           FROM DBA_TAB_COMMENTS
           WHERE OWNER = #{scope[:schema]}
           AND TABLE_NAME = #{scope[:name]}
         SQL
+        result.map(&:first)
       end
 
       def temporary_table?(name)
