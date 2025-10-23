@@ -245,7 +245,7 @@ module ActiveRecord
           WHERE OWNER = #{scope[:schema]}
           AND TABLE_NAME = #{scope[:name]}
         SQL
-        result.map(&:first)
+        result.map(&:first)[0]
       end
 
       def temporary_table?(name)
