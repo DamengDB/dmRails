@@ -667,8 +667,10 @@ module ActiveRecord
           field["data_default"].sub!(/^'(.*)'$/m, '\1')
           field["data_default"] = nil if /^(null|empty_[bc]lob\(\))$/i.match?(field["data_default"])
           field["data_default"] = false if field["data_default"] == "N"
-          if ["float", "integer", "decimal", "double"].include?(sql_type)
+          if ["float", "decimal", "double"].include?(sql_type)
             field["data_default"] = field["data_default"].to_f
+          elsif "integer" == sql_type
+            field["data_default"] = field["data_default"].to_i
           end
         end
 
