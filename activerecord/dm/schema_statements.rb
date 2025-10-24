@@ -179,8 +179,8 @@ module ActiveRecord
 
           def add_index_length(quoted_columns, **options)
             lengths = options_for_index_columns(options[:length])
-            quoted_columns.each do |name, column|0
-              column = "SUBSTR(#{column}, 1, #{lengths[name]})" if lengths[name].present?
+            quoted_columns.each do |name, column|
+              quoted_columns[name] = "SUBSTR(#{column}, 1, #{lengths[name]})" if lengths[name].present?
             end
           end
 
