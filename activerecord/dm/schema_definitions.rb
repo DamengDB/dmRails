@@ -109,11 +109,11 @@ module ActiveRecord
         include Dm::ColumnMethods
 
         def timestamptz(*args, **options)
-          raise NoMethodError, "undefined Type `timestamptz' for #{self}"
+          raise NoMethodError, "undefined Type 'timestamptz' for #{self}"
         end
 
         def timestampltz(*args, **options)
-          raise NoMethodError, "undefined Type `timestamptz' for #{self}"
+          raise NoMethodError, "undefined Type 'timestampltz' for #{self}"
         end
       end
 
