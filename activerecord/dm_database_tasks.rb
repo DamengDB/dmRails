@@ -52,7 +52,11 @@ module ActiveRecord
       def drop
         schema_name = get_schema_name()
         establish_connection(@config.merge("database" => nil, "schema" => nil))
-        connection.execute "DROP SCHEMA #{quote_table_name(schema_name)} CASCADE"
+        if @config["parse_type"] == "mysql"
+          connection.execute "DROP SCHEMA #{quote_table_name(schema_name)}"
+        else
+          connection.execute "DROP SCHEMA #{quote_table_name(schema_name)} CASCADE"
+        end
       end
 
       def purge
