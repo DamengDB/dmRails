@@ -251,12 +251,13 @@ module ActiveRecord
       def temporary_table?(name)
         scope = quoted_scope(name)
 
-        array_query(<<~SQL, "SCHEMA").presence
+        result = array_query(<<~SQL, "SCHEMA").presence
           SELECT TEMPORARY 
           FROM ALL_TABLES
           WHERE OWNER = #{scope[:schema]}
           AND TABLE_NAME = #{scope[:name]}
         SQL
+        result.map(&:first)[0]
       end
 
       def change_table_comment(table_name, comment_or_changes)
@@ -517,15 +518,14 @@ module ActiveRecord
       end
 
       def table_options(table_name) # :nodoc:
-        options_result = {}
-        if comment = table_comment(table_name)
-          options_result[:comment] = comment
-        end
+        options = {}
+        comment = table_comment(table_name)
+        options[:comment] = comment if !comment.nil?
 
-        if temporary_table?(table_name)[0][0] == 'Y'
-          options_result[:temporary] = true
+        if temporary_table?(table_name) == 'Y'
+          options[:temporary] = true
         end
-        options_result
+        options
       end
 
       def primary_keys(table_name) # :nodoc:
@@ -685,11 +685,14 @@ module ActiveRecord
           type_metadata.instance_variable_set("@scale", field["scale"])
         end
         default_value = nil if is_virtual
+        if default_value != nil
+          default_value, default_function = extract_default_value(sql_type, default_value)
+        end
         version = Rails.version
         if version < "6.0"
-          result = new_column(field["name"], default_value, type_metadata, field["nullable"] == "y", table_name, comment: field["column_comment"])
+          result = new_column(field["name"], default_value, type_metadata, field["nullable"] == "y", table_name, comment: field["column_comment"], default_function: default_function)
         else
-          result = Dm::Column.new(field["name"], default_value, type_metadata, field["nullable"] == "y", comment: field["column_comment"])
+          result = Dm::Column.new(field["name"], default_value, type_metadata, field["nullable"] == "y", comment: field["column_comment"], default_function: default_function)
         end
         result
       end
@@ -700,6 +703,14 @@ module ActiveRecord
           default.gsub("''", "'")
         else
           default
+        end
+      end
+
+      def extract_default_value(sql_type, default_value)
+        default, default_function = default_value, nil
+
+        if sql_type == "datetime" && /\ACURRENT_TIMESTAMP(?:\([0-6]?\))?\z/i.match?(default)
+          default, default_function = nil, default
         end
       end
 
