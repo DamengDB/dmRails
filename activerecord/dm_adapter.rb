@@ -459,7 +459,7 @@ module ActiveRecord
                 END
                 ELSE LOWER(cols.data_type) END AS "sql_type",
                  cols.data_default as "data_default", LOWER(cols.nullable) as "nullable",
-                 cols.data_type_owner AS "sql_type_owner", cols.DATA_PRECISION AS "precision",
+                 cols.data_type_owner AS "sql_type_owner", CAST(cols.DATA_PRECISION AS INT) AS "precision",
                  syscol.LENGTH$ AS "limit", syscol.scale AS "scale",
                  comments.comments AS "column_comment"
             FROM all_tab_cols cols, all_col_comments comments, syscolumns syscol, sysobjects sysobj
@@ -709,9 +709,12 @@ module ActiveRecord
       def extract_default_value(sql_type, default_value)
         default, default_function = default_value, nil
 
-        if sql_type == "datetime" && /\ACURRENT_TIMESTAMP(?:\([0-6]?\))?\z/i.match?(default)
+        time_type_dict = ["time", "datetime", "datetime with time zone", "datetime with local time zone"]
+
+        if time_type_dict.include?(sql_type) and (/\ACURRENT_TIMESTAMP(?:\([0-6]?\))?\z/i.match?(default) or /\ACURRENT_TIME(?:\([0-6]?\))?\z/i.match?(default))
           default, default_function = nil, default
         end
+        return default, default_function
       end
 
       def each_hash(result) # :nodoc:
