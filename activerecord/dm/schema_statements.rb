@@ -85,7 +85,7 @@ module ActiveRecord
             elsif type_str == "timestamptz"
               return precision.nil? ? "timestamp with time zone":"timestamp(#{precision.to_i}) with time zone"
             elsif type_str == "timestampltz"
-              return precision.nil? ? "timestamp with time zone":"timestamp(#{precision.to_i}) with local time zone"
+              return precision.nil? ? "timestamp with local time zone":"timestamp(#{precision.to_i}) with local time zone"
             end
           end
           super
