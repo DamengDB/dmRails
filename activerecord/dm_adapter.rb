@@ -449,7 +449,7 @@ module ActiveRecord
         else
           owner = "SYS_CONTEXT('userenv', 'current_schema')"
         end
-        query(<<-SQL, "SCHEMA")
+        result = query(<<-SQL, "SCHEMA")
         SELECT cols.column_name AS "name",
                 CASE LOWER(cols.data_type)  WHEN 'blob' THEN
                 CASE syscol.scale
@@ -474,6 +474,10 @@ module ActiveRecord
              AND sysobj.name = cols.table_name
              AND syscol.id = sysobj.id
         SQL
+        if result == []
+          raise(ActiveRecordError, "Table #{table_name} doesn't exist")
+        end
+        return result
       end
 
       def foreign_keys(table_name)
