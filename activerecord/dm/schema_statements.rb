@@ -76,9 +76,41 @@ module ActiveRecord
           end.compact
         end
 
-        def type_to_sql(type, limit: nil, precision: nil, scale: nil, **) # :nodoc:
+        def type_to_sql(type, limit: nil, precision: nil, scale: nil, **extract_args) # :nodoc:
 
           type_str = type.to_s
+          if ["vector", "vector_int8", "vector_float32", "vector_float64"].include?(type_str)
+            dim = extract_args[:dim]
+            format = extract_args[:format]
+            if not dim.is_a?(Integer)
+              raise ArgumentError, "Diimension must be of type integer"
+            end
+            if dim < 1 or dim > 65535
+              raise ArgumentError, "The range of dimension value is from 1 to 65535"
+            end
+            if type_str == "vector"
+              format = extract_args[:format]
+              if format.nil?
+                format = "float32"
+              else
+                if not format.is_a?(String)
+                  raise ArgumentError, "Format must be of type string"
+                else
+                  format = format.downcase
+                  if not ["int8", "float32", "float64"].include?(format)
+                    raise ArgumentError, "Unsupported type by DM, format must be within the range of INT8, FLOAT32, FLOAT64"
+                  end
+                end
+              end
+            elsif type_str == "vector_int8"
+              format = "int8"
+            elsif type_str == "vector_float32"
+              format = "float32"
+            elsif type_str == "vector_float64"
+              format = "float64"
+            end
+            return "vector(#{dim}, #{format})"
+          end
           if ["timetz", "timestamptz", "timestampltz"].include?(type_str)
             if type_str == "timetz"
               return precision.nil? ? "time with time zone":"time(#{precision.to_i}) with time zone"

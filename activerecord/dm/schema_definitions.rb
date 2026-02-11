@@ -72,6 +72,22 @@ module ActiveRecord
         def timestampltz(*args, **options)
           args.each { |name| column(name, :timestampltz, options) }
         end
+
+        def vector(*args, **options)
+          args.each { |name| column(name, :vector, options) }
+        end
+
+        def vector_int8(*args, **options)
+          args.each { |name| column(name, :vector_int8, options) }
+        end
+
+        def vector_float32(*args, **options)
+          args.each { |name| column(name, :vector_float32, options) }
+        end
+
+        def vector_float64(*args, **options)
+          args.each { |name| column(name, :vector_float64, options) }
+        end
       end
 
       class TableDefinition < ActiveRecord::ConnectionAdapters::TableDefinition
@@ -114,6 +130,22 @@ module ActiveRecord
 
         def timestampltz(*args, **options)
           raise NoMethodError, "undefined Type 'timestampltz' for #{self}"
+        end
+
+        def vector(*args, **options)
+          raise NoMethodError, "undefined Type 'vector' for #{self}"
+        end
+
+        def vector_int8(*args, **options)
+          raise NoMethodError, "undefined Type 'vector' for #{self}"
+        end
+
+        def vector_float32(*args, **options)
+          raise NoMethodError, "undefined Type 'vector' for #{self}"
+        end
+
+        def vector_float64(*args, **options)
+          raise NoMethodError, "undefined Type 'vector' for #{self}"
         end
       end
 

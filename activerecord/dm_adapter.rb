@@ -3,11 +3,15 @@ require "active_record/connection_adapters/dm/utils"
 require "active_record/connection_adapters/dm/column"
 require "active_record/connection_adapters/dm/quoting"
 require "active_record/connection_adapters/dm/type/blob"
+require "active_record/connection_adapters/dm/type/vector"
 require "active_record/connection_adapters/dm/type/timetz"
 require "active_record/connection_adapters/statement_pool"
 require "active_record/connection_adapters/abstract_adapter"
 require "active_record/connection_adapters/dm/type_metadata"
 require "active_record/connection_adapters/dm/schema_dumper"
+require "active_record/connection_adapters/dm/type/vector_i8"
+require "active_record/connection_adapters/dm/type/vector_f32"
+require "active_record/connection_adapters/dm/type/vector_f64"
 require "active_record/connection_adapters/dm/schema_creation"
 require "active_record/connection_adapters/dm/type/timestamptz"
 require "active_record/connection_adapters/dm/type/timestampltz"
@@ -117,7 +121,8 @@ module ActiveRecord
         boolean:      ["bool", "bit"],
         text:         ["text", "long", "longvarchar", "clob"],
         blob:         ["blob"],
-        json:         ["json", "jsonb"]
+        json:         ["json", "jsonb"],
+        vector:       ["vector"]
       }
 
       def initialize(connection, logger, connection_options, config)
@@ -405,9 +410,92 @@ module ActiveRecord
         rename_column_indexes(table_name, column_name, new_column_name)
       end
 
+      def add_index_options(table_name, column_name, options)
+        if not options[:type].nil? and options[:type].is_a?(String)
+          options[:type] = options[:type].upcase
+          if options[:type] == "HNSW" or options[:type] == "IVFFLAT"
+            vec_ind_option = {}
+            if not options[:metric_name].nil?
+              vec_ind_option[:metric_name] = options[:metric_name]
+              options.delete(:metric_name)
+            else
+              vec_ind_option[:metric_name] = "COSINE"
+            end
+            if not options[:percentage_value].nil?
+              vec_ind_option[:percentage_value] = options[:percentage_value]
+              options.delete(:percentage_value)
+            else
+              vec_ind_option[:percentage_value] = 90
+            end
+            if options[:type] == "HNSW"
+              if not options[:num_of_partitions].nil?
+                vec_ind_option[:num_of_partitions] = options[:num_of_partitions]
+                options.delete(:num_of_partitions)
+              else
+                vec_ind_option[:num_of_partitions] = 0
+              end
+            else
+              if not options[:max_connection].nil?
+                vec_ind_option[:max_connection] = options[:max_connection]
+                options.delete(:max_connection)
+              else
+                vec_ind_option[:max_connection] = 0
+              end
+              if not options[:ef_construction].nil?
+                vec_ind_option[:ef_construction] = options[:ef_construction]
+                options.delete(:ef_construction)
+              else
+                vec_ind_option[:ef_construction] = 0
+              end
+            end
+            index_name, index_type, index_columns, uniques, index_algorithm, index_using, comment = super
+            return index_name, index_type, index_columns, uniques, index_algorithm, index_using, comment, vec_ind_option
+          else
+            return super
+          end
+        else
+          return super
+        end
+      end
+
+      def is_string?(value)
+        return value.is_a?(String) || value.is_a?(Symbol)
+      end
+
+      def create_vector_idnex_sql(table_name, index_name, index_type, index_columns, vec_ind_option)
+        metric_name = vec_ind_option[:metric_name]
+        percentage_value = vec_ind_option[:percentage_value]
+        if index_type == "IVFFLAT"
+          num_of_partitions = vec_ind_option[:num_of_partitions]
+          sql = "CREATE VECTOR INDEX #{quote_column_name(index_name)} ON #{quote_table_name(table_name)} (#{index_columns}) ORGANIZATION PARTITIONS "\
+                         "DISTANCE #{metric_name} WITH TARGET ACCURACY #{percentage_value}"
+          if not num_of_partitions.nil?
+            sql += " (TYPE IVF, NEIGHBOR PARTITIONS #{num_of_partitions});"
+          end
+        else
+          max_connection = vec_ind_option[:max_connection]
+          ef_construction = vec_ind_option[:ef_construction]
+          sql = "CREATE VECTOR INDEX #{quote_column_name(index_name)} ON #{quote_table_name(table_name)} (#{index_columns}) ORGANIZATION GRAPH "\
+                     "DISTANCE #{metric_name} WITH TARGET ACCURACY #{percentage_value}"
+
+          if not max_connection.nil? or not ef_construction.nil?
+            if not max_connection.nil?
+              sql += " PARAMETERS(TYPE HNSW, NEIGHBOR #{max_connection}"
+              if not ef_construction.nil?
+                sql += ", EFCONSTRUCTION #{ef_construction});"
+              else
+                sql += ");"
+              end
+            else
+              sql += " PARAMETERS(TYPE HNSW, EFCONSTRUCTION #{ef_construction});"
+            end
+          end
+        end
+        sql
+      end
+
       def add_index(table_name, column_name, options = {}) #:nodoc:
-        index_name, index_type, index_columns, uniques, index_algorithm, index_using, comment = add_index_options(table_name, column_name, options)
-        type = nil
+        index_name, index_type, index_columns, uniques, index_algorithm, index_using, comment, vec_ind_option = add_index_options(table_name, column_name, options)
         if index_type == "NORMAL" or index_type == "VIRTUAL"
           if options[:unique]
             type = "UNIQUE"
@@ -419,8 +507,46 @@ module ActiveRecord
         else
           type = index_type
         end
-        sql = "CREATE #{type} INDEX #{quote_column_name(index_name)} ON #{quote_table_name(table_name)} (#{index_columns}) #{index_algorithm}"
+        if index_type == "HNSW" or index_type == "IVFFLAT"
+          sql = create_vector_idnex_sql(table_name, index_name, index_type, index_columns, vec_ind_option)
+        else
+          sql = "CREATE #{type} INDEX #{quote_column_name(index_name)} ON #{quote_table_name(table_name)} (#{index_columns}) #{index_algorithm}"
+        end
         execute add_sql_comment!(sql, comment)
+      end
+
+      def _check_vector_index(index_name, table_owner)
+        result = query(<<-SQL, "SCHEMA")
+        SELECT INDEX_TYPE FROM USER_INDEXES WHERE INDEX_NAME = #{quote(index_name)} AND TABLE_OWNER 
+        = #{quote(table_owner)} AND INDEX_TYPE IN ('VECTOR HNSW', 'VECTOR IVFFLAT');
+        SQL
+        if result == []
+          raise ArgumentError, "The specified vector index was not found"
+        else
+          return result[0]["INDEX_TYPE"][7..-1]
+        end
+      end
+
+      def rebuild_index(schema_name=nil, table_name=nil, index_name=nil, index_type=nil, metric_name=nil,
+                        target_accuracy=nil, cluster_centers=nil, max_connection=nil, ef_construction=nil)
+        if schema_name.nil? or index_name.nil?
+          raise ArgumentError, "At least one of the following parameters is missing its value: schema_nname, index_name"
+        end
+        vec_ind_type = nil
+        if is_string?(table_name) and is_string?(schema_name)
+          vec_ind_type = _check_vector_index(index_name, schema_name)
+        end
+        if vec_ind_type.nil? and not index_type.nil?
+          vec_ind_type = index_type.upcase
+        end
+        if vec_ind_type == "IVFFLAT"
+          sql = "CALL SP_REBUILD_VECTOR_IVFFLAT_INDEX(#{quote(schema_name)}, #{quote(index_name)}, #{quote(metric_name)}, #{target_accuracy.nil? ? 'NULL' : target_accuracy}, #{cluster_centers.nil? ? 'NULL' : cluster_centers});"
+        elsif vec_ind_type == "HNSW"
+          sql = "CALL SP_REBUILD_VECTOR_HNSW_INDEX(#{quote(schema_name)}, #{quote(index_name)}, #{quote(metric_name)}, #{max_connection.nil? ? 'NULL' : max_connection}, #{cluster_centers.nil? ? 'NULL' : cluster_centers}, #{ef_construction.nil? ? 'NULL' : ef_construction});"
+        else
+          raise ArgumentError, "Unknown index type. Specify an index type or a table name for querying. Only IVFFLAT and HNSW index types are supported"
+        end
+        execute sql
       end
 
       def add_sql_comment!(sql, comment) # :nodoc:
@@ -451,28 +577,30 @@ module ActiveRecord
         end
         result = query(<<-SQL, "SCHEMA")
         SELECT cols.column_name AS "name",
-                CASE LOWER(cols.data_type)  WHEN 'blob' THEN
-                CASE syscol.scale
+          CASE LOWER(cols.data_type)
+            WHEN 'blob' THEN
+              CASE syscol.scale
                 WHEN 0x4000 THEN 'jsonb'
                 WHEN 0x2000 THEN 'json'
-                ELSE LOWER(cols.data_type) 
-                END
-                ELSE LOWER(cols.data_type) END AS "sql_type",
-                 cols.data_default as "data_default", LOWER(cols.nullable) as "nullable",
-                 cols.data_type_owner AS "sql_type_owner", CAST(cols.DATA_PRECISION AS INT) AS "precision",
-                 syscol.LENGTH$ AS "limit", syscol.scale AS "scale",
-                 comments.comments AS "column_comment"
-            FROM all_tab_cols cols, all_col_comments comments, syscolumns syscol, sysobjects sysobj
-            WHERE cols.table_name = '#{desc_table_name}'
-             AND cols.owner      = #{owner}
-             AND cols.hidden_column = 'NO'
-             AND cols.owner = comments.schema_name
-             AND cols.table_name = comments.table_name
-             AND cols.column_name = comments.column_name
-             AND cols.column_name = syscol.name
-             AND sysobj.schid = (SELECT id FROM SYSOBJECTS WHERE NAME = #{owner} AND TYPE$='SCH')
-             AND sysobj.name = cols.table_name
-             AND syscol.id = sysobj.id
+                ELSE LOWER(cols.data_type)
+              END
+            ELSE LOWER(cols.data_type)
+          END AS "sql_type",
+          cols.data_default as "data_default", LOWER(cols.nullable) as "nullable",
+          cols.data_type_owner AS "sql_type_owner", CAST(cols.DATA_PRECISION AS INT) AS "precision",
+          syscol.LENGTH$ AS "limit", syscol.scale AS "scale",
+          comments.comments AS "column_comment"
+          FROM all_tab_cols cols, all_col_comments comments, syscolumns syscol, sysobjects sysobj
+          WHERE cols.table_name = '#{desc_table_name}'
+           AND cols.owner      = #{owner}
+           AND cols.hidden_column = 'NO'
+           AND cols.owner = comments.schema_name
+           AND cols.table_name = comments.table_name
+           AND cols.column_name = comments.column_name
+           AND cols.column_name = syscol.name
+           AND sysobj.schid = (SELECT id FROM SYSOBJECTS WHERE NAME = #{owner} AND TYPE$='SCH')
+           AND sysobj.name = cols.table_name
+           AND syscol.id = sysobj.id
         SQL
         if result == []
           raise(ActiveRecordError, "Table #{table_name} doesn't exist")
@@ -621,6 +749,17 @@ module ActiveRecord
         elsif DM_TYPE_DICT[:double].include?(field["sql_type"])
           field["sql_type"] = "double(#{(scale || 6).to_i})"
           sql_type = "double"
+        elsif DM_TYPE_DICT[:vector].include?(field["sql_type"])
+          if scale == 277
+            field["sql_type"] = "vector_float32"
+          elsif scale == 533
+            field["sql_type"] = "vector_float64"
+          elsif scale == 789
+            field["sql_type"] = "vector_int8"
+          else
+            raise ArgumentError, 'Unsupported value type'
+          end
+          sql_type = field["sql_type"]
         end
 
         re_define_flag = false
@@ -781,6 +920,9 @@ module ActiveRecord
           super
           register_class_with_precision m, "time", Type::Time
           register_class_with_limit m, "datetime", Type::DateTime
+          register_class_with_limit m, "vector_int8", Type::Dm::VectorInt8
+          register_class_with_limit m, "vector_float32", Type::Dm::VectorFloat32
+          register_class_with_limit m, "vector_float64", Type::Dm::VectorFloat64
           m.register_type "decimal",       Type::Decimal.new
           m.register_type "varchar",       Type::String.new
           m.register_type "binary",        Type::Binary.new
@@ -798,6 +940,7 @@ module ActiveRecord
           m.register_type "jsonb",         Type::Json.new
           m.register_type "time",          Type::Time.new
           m.register_type "blob",          Type::Dm::Blob.new
+          m.register_type "vector",        Type::Dm::Vector.new
           m.register_type "time with time zone", Type::Dm::TimeTz.new
           m.register_type "datetime with time zone", Type::Dm::TimestampTz.new
           m.register_type "datetime with local time zone", Type::Dm::TimestampLtz.new
