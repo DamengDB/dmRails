@@ -83,7 +83,7 @@ module ActiveRecord
             dim = extract_args[:dim]
             format = extract_args[:format]
             if not dim.is_a?(Integer)
-              raise ArgumentError, "Diimension must be of type integer"
+              raise ArgumentError, "Dimension must be of type integer"
             end
             if dim < 1 or dim > 65535
               raise ArgumentError, "The range of dimension value is from 1 to 65535"
@@ -170,6 +170,17 @@ module ActiveRecord
             end
             execute insert_versions_sql(inserting)
           end
+        end
+
+        def add_column(table_name, column_name, type, **options) #:nodoc:
+          clear_cache!
+          comment = nil
+          if options.key?(:comment)
+            comment = options[:comment]
+            options.delete(:comment)
+          end
+          super
+          change_column_comment(table_name, column_name, comment) if not comment.nil?
         end
 
         private
