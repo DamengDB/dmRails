@@ -198,6 +198,7 @@ module ActiveRecord
               sql = "{data_source_sql}SELECT tab.#{col_name} FROM #{all_name} tab, sysobjects obj"
               sql << "\nWHERE obj.name = tab.#{col_name}"
               sql << "\nAND tab.owner = #{scope[:schema]}"
+              sql << "\nAND tab.table_name <> '##HISTOGRAMS_TABLE'" if type == "BASE TABLE"
               sql << "\nAND obj.schid = (SELECT id FROM SYSOBJECTS WHERE NAME = #{scope[:schema]} AND TYPE$='SCH')"
               sql << "\nAND tab.#{col_name} = #{scope[:name]}" if scope[:name]
               sql << "\nAND obj.subtype$ = #{scope[:type]}" if scope[:type]
@@ -206,6 +207,7 @@ module ActiveRecord
               sql = "{data_source_sql}SELECT tab.table_name AS \"table_name\" FROM all_tables tab, sysobjects obj  "
               sql << "\nWHERE obj.name = tab.table_name"
               sql << "\nAND tab.owner = #{scope[:schema]}"
+              sql << "\nAND tab.table_name <> '##HISTOGRAMS_TABLE'"
               sql << "\nAND tab.table_name = #{scope[:name]}" if scope[:name]
               sql << "\nAND obj.subtype$ = #{scope[:type]}" if scope[:type]
               sql << "\n UNION ALL"
