@@ -80,7 +80,7 @@ module ActiveRecord
 
           type_str = type.to_s
           if ["vector", "vector_int8", "vector_float32", "vector_float64"].include?(type_str)
-            dim = extract_args[:dim]
+            dim = extract_args[:dim] || limit
             format = extract_args[:format]
             if not dim.is_a?(Integer)
               raise ArgumentError, "Dimension must be of type integer"

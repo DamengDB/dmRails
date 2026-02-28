@@ -9,9 +9,9 @@ require "active_record/connection_adapters/statement_pool"
 require "active_record/connection_adapters/abstract_adapter"
 require "active_record/connection_adapters/dm/type_metadata"
 require "active_record/connection_adapters/dm/schema_dumper"
-require "active_record/connection_adapters/dm/type/vector_i8"
-require "active_record/connection_adapters/dm/type/vector_f32"
-require "active_record/connection_adapters/dm/type/vector_f64"
+require "active_record/connection_adapters/dm/type/vector_int8"
+require "active_record/connection_adapters/dm/type/vector_float32"
+require "active_record/connection_adapters/dm/type/vector_float64"
 require "active_record/connection_adapters/dm/schema_creation"
 require "active_record/connection_adapters/dm/type/timestamptz"
 require "active_record/connection_adapters/dm/type/timestampltz"
@@ -103,6 +103,10 @@ module ActiveRecord
         jsonb:       { name: "jsonb" },
         varchar:     { name: "varchar" },
         bigint:      { name: "bigint" },
+        vector:      { name: "vector" },
+        vector_float32:       { name: "vector_float32", format: "float32" },
+        vector_float64:       { name: "vector_float64", format: "float64" },
+        vector_int8:          { name: "vector_int8", format: "int8" },
       }
 
       DM_TYPE_DICT = {
@@ -582,8 +586,8 @@ module ActiveRecord
               CASE syscol.scale
                 WHEN 0x4000 THEN 'jsonb'
                 WHEN 0x2000 THEN 'json'
-                ELSE LOWER(cols.data_type)
-              END
+              ELSE lower(cols.data_type)
+            END
             ELSE LOWER(cols.data_type)
           END AS "sql_type",
           cols.data_default as "data_default", LOWER(cols.nullable) as "nullable",
@@ -760,6 +764,7 @@ module ActiveRecord
             raise ArgumentError, 'Unsupported value type'
           end
           sql_type = field["sql_type"]
+          field["scale"] = 0
         end
 
         re_define_flag = false

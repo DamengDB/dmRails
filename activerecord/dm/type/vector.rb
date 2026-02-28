@@ -6,13 +6,14 @@ module ActiveRecord
     module Dm
       class Vector < ActiveRecord::Type::Value
 
-        attr_reader :dim, :format
+        attr_reader :dim, :format, :storage_format
 
         MIN_DIM = 1
         MAX_DIM = 65535
 
-        def initialize(dim: nil, format: nil)
+        def initialize(dim: nil, limit: nil, format: nil, storage_format: nil)
           @dim = dim
+          @limit = limit
           @fomat = format
         end
 
@@ -28,14 +29,17 @@ module ActiveRecord
         end
 
         def ==(other)
+          local_dim = dim || limit
+          other_local_dim = other.dim || other.limit
           self.class == other.class &&
-            dim == other.dim &&
-            format == other.format
+            local_dim == other_local_dim &&
+            format == other.format &&
+            storage_format == other.storage_format
         end
         alias eql? ==
 
         def hash
-          [self.class, dim, format].hash
+          [self.class, dim, format, storage_format].hash
         end
 
         def l1_distance(column)
